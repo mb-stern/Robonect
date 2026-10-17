@@ -18,6 +18,7 @@ class IPSModule
     public $failSetValue = false;
     public $setValueCalls = [];
     public $formUpdates = [];
+    public $debugMessages = [];
     public $variableNames = [];
     public $status;
     public $timerIntervals = [];
@@ -37,7 +38,7 @@ class IPSModule
     public function SetStatus($status) { $this->status = $status; }
     public function RegisterTimer($name, $interval, $script) {}
     public function SetTimerInterval($name, $interval) { $this->timerIntervals[$name] = $interval; }
-    public function SendDebug($name, $message, $format) {}
+    public function SendDebug($name, $message, $format) { $this->debugMessages[] = [$name, $message]; }
     public function UpdateFormField($name, $parameter, $value) { $this->formUpdates[] = [$name, $parameter, $value]; }
     public function EnableAction($ident) {}
     public function MaintainAction($ident, $enabled) { return true; }

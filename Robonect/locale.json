@@ -42,10 +42,11 @@
       "Variable": "Variable",
       "Refresh error history": "Fehlerliste aktualisieren",
       "Refresh all values": "Alle Werte aktualisieren",
-      "HTTP updates supplement MQTT. The interval controls background API requests. Automatic updates protect sleep; Refresh all values may wake the mower.": "HTTP-Updates ergänzen MQTT. Das Intervall bestimmt die regelmäßigen API-Abfragen. Im Hintergrund wird der Schlaf geschont; „Alle Werte aktualisieren“ kann den Mäher aufwecken.",
       "HTTP update interval": "HTTP-Abfrageintervall",
       "New values start checked. Save checkbox changes with Symcon Apply Changes. Selected variables are created; unchecked variables are deleted. Re-enabling creates a new ID.": "Neue Werte sind vorausgewählt. Änderungen an den Checkboxen über Symcons „Änderungen übernehmen“ speichern. Dabei werden ausgewählte Variablen angelegt und abgewählte gelöscht. Erneutes Aktivieren vergibt eine neue ID.",
-      "Data received means a value has been delivered at least once. Reception not recorded means the variable exists, but reception has not yet been recorded. Neither indicates freshness.": "„Daten empfangen“: Ein Wert wurde bereits geliefert. „Empfang nicht erfasst“: Die Variable existiert, aber ein Empfang wurde noch nicht erfasst. Beides ist keine Aussage zur Aktualität."
+      "Data received means a value has been delivered at least once. Reception not recorded means the variable exists, but reception has not yet been recorded. Neither indicates freshness.": "„Daten empfangen“: Ein Wert wurde bereits geliefert. „Empfang nicht erfasst“: Die Variable existiert, aber ein Empfang wurde noch nicht erfasst. Beides ist keine Aussage zur Aktualität.",
+      "HTTP updates supplement MQTT. Detail requests are skipped when the mower reports sleep or off. Refresh all values also reads error history and may wake the mower.": "HTTP-Updates ergänzen MQTT. Bei gemeldetem Schlaf oder ausgeschaltetem Mäher entfallen automatische Detailabfragen. „Alle Werte aktualisieren“ liest auch die Fehlerhistorie und kann den Mäher aufwecken.",
+      "The checklist is a snapshot. Reopen the configuration to see newly received values and the current variable registration status.": "Die Checkliste ist eine Momentaufnahme. Konfiguration erneut öffnen, um neu empfangene Werte und den aktuellen Anlagenstatus zu sehen."
     }
   }
 }

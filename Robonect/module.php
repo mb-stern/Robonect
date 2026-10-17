@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.8';
+    private const MODULE_BUILD = '2026-10-17.9';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     /**
@@ -73,7 +73,6 @@ class RobonectWifiModul extends IPSModule
         $this->SetTimerInterval("ROBONECT_UpdateTimer",
             $this->ReadPropertyBoolean("HTTPUpdateTimer") && $this->ReadPropertyInteger("UpdateTimer") >= 10
                 ? $this->ReadPropertyInteger("UpdateTimer") * 1000 : 0);
-        $this->refreshVariableChecklist('');
     }
 
 
@@ -92,6 +91,7 @@ class RobonectWifiModul extends IPSModule
         };
         try {
             $this->log('Update - Semaphore entered');
+            $this->log($forceDetails ? 'Aktualisierung: manuelle Gesamtaktualisierung.' : 'Aktualisierung: Standardaufruf (Timer oder Skript).');
             if ($forceDetails) {
                 // A manual full refresh retries optional commands on the wire.
                 // New confirmed rejections are cached again for background use.
@@ -109,6 +109,7 @@ class RobonectWifiModul extends IPSModule
             } else {
                 $this->observeHTTPValues('status', $data);
                 $mowerStatus = $this->numericValue($data['status']['status'] ?? null);
+                $this->log('HTTP-Status: gemeldeter Mäherzustand ' . ($mowerStatus === false ? 'unbekannt' : $mowerStatus) . '.');
                 $this->updateReport = ['status' => true, 'mowerStatus' => $mowerStatus];
                 // set values to variables
 
@@ -164,6 +165,7 @@ class RobonectWifiModul extends IPSModule
             // Background updates protect sleep/offline/unknown states.
             // The explicit manual full refresh bypasses this guard.
             if (!$forceDetails && ($mowerStatus === false || $mowerStatus <= 0 || floor($mowerStatus) != $mowerStatus || in_array((int) $mowerStatus, [16, 17], true))) {
+                $this->log('Detailabfragen entfallen: gemeldeter Schlaf-/Aus-/unbekannter Zustand.');
                 return;
             }
 
@@ -197,6 +199,7 @@ class RobonectWifiModul extends IPSModule
                 }
             } else {
                 $this->updateReport['gps'] = 'mqtt';
+                $this->log('GPS: frische MQTT-Koordinaten; HTTP-Abfrage entfällt.');
             }
             // Optional detail failures must not mark a working status connection offline.
             if ($this->updateReport['status']) $this->SetStatus(102);
@@ -222,6 +225,8 @@ class RobonectWifiModul extends IPSModule
 
     public function RefreshAllValues(string $selection = '')
     {
+        // Keep the optional argument for existing callers. Runtime refreshes must
+        // not replace editable form values in any open configuration window.
         $this->refreshCachedErrorHistory();
         $this->updateValues(true);
         if ($this->updateReport === []) return 'Aktualisierung läuft bereits. Bitte später erneut versuchen.';
@@ -233,29 +238,7 @@ class RobonectWifiModul extends IPSModule
             if ($result === false && !empty($this->updateReport[$command . 'Failure'])) $messages[count($messages) - 1] .= '. ' . $this->updateReport[$command . 'Failure'];
         }
         $messages[] = 'Fehlerliste: ' . ($this->UpdateErrorList() === false ? 'Abfrage fehlgeschlagen; vorhandene Anzeige beibehalten. ' . $this->lastHTTPFailure : 'aktualisiert (Code 203 ausgeblendet)');
-        $this->refreshVariableChecklist($selection);
         return implode("\n", $messages);
-    }
-
-    protected function refreshVariableChecklist(string $selection)
-    {
-        // Form edits are not properties until explicitly applied. Carry them
-        // forward by Ident while adding new discoveries to the open checklist.
-        $choices = [];
-        $displayed = json_decode($selection, true);
-        if (is_array($displayed)) {
-            foreach ($displayed as $row) {
-                if (is_array($row) && isset($row['Ident'], $row['Visible']) && is_string($row['Ident']) && is_bool($row['Visible'])) {
-                    $choices[$row['Ident']] = $row['Visible'];
-                }
-            }
-        }
-        $rows = $this->visibilityRows();
-        foreach ($rows as &$row) {
-            if (array_key_exists($row['Ident'], $choices)) $row['Visible'] = $choices[$row['Ident']];
-        }
-        unset($row);
-        $this->UpdateFormField('VariableVisibility', 'values', json_encode($rows));
     }
 
     public function Start()
@@ -657,6 +640,11 @@ class RobonectWifiModul extends IPSModule
                 CURLOPT_CONNECTTIMEOUT => 5,
                 CURLOPT_TIMEOUT => 30
             ]);
+            // Record only the command name, never URLs, credentials, parameters
+            // or returned coordinates. Cached rejections never reach this line.
+            $baseCommand = explode('&', $command, 2)[0];
+            $diagnosticCommand = in_array($baseCommand, ['status', 'health', 'gps', 'error', 'start', 'stop', 'mode', 'timer'], true) ? $baseCommand : 'anderer Befehl';
+            $this->log('HTTP-Abfrage gesendet: ' . $diagnosticCommand . '.');
             $json = curl_exec($ch);
             $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
             if ($json === false || $httpCode !== 200) {

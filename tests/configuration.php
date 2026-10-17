@@ -32,7 +32,8 @@ function applyNativeChecklist($m,$rows) {
     IPS_SetProperty($m->InstanceID,$list['name'],json_encode($saved));
     IPS_ApplyChanges($m->InstanceID);
 }
-// Symcon exposes named fields only inside the button's own scope (elements/actions).
+// The refresh script needs only the instance ID; form variables are deliberately
+// absent so it also stays independent of editable list contents and scope.
 function formButtons($elements) {
     $buttons=[];
     foreach($elements as $element){
@@ -41,14 +42,11 @@ function formButtons($elements) {
     }
     return $buttons;
 }
-function runRefreshButton($m,$form,$displayed) {
+function runRefreshButton($m,$form) {
     foreach(['elements','actions'] as $scope)foreach(formButtons($form[$scope]??[]) as $button){
         if($button['caption']!=='Refresh all values')continue;
-        $names=[];$walk=function($fields)use(&$walk,&$names){foreach($fields as $field){if(isset($field['name']))$names[]=$field['name'];if(isset($field['items']))$walk($field['items']);}};
-        $walk($form[$scope]);
         $id=$m->InstanceID;
-        if(in_array('VariableVisibility',$names,true))$VariableVisibility=new ArrayIterator($displayed);
-        ob_start();try{eval(implode("\n",$button['onClick']));return ob_get_contents();}finally{ob_end_clean();}
+        ob_start();try{eval(is_array($button['onClick'])?implode("\n",$button['onClick']):$button['onClick']);return ob_get_contents();}finally{ob_end_clean();}
     }
     throw new RuntimeException('Refresh button missing');
 }
@@ -150,7 +148,7 @@ test('Native Apply saves checkboxes and creates GPS and raw variables through Ap
     applyNativeChecklist($m,$rows);
     eq($m->values['mowerGpsSatellites'],11);eq($m->values[$extra],'42');check(!isset($m->types['mowerHours']));
     foreach(json_decode($m->properties['VariableVisibility'],true) as $saved)eq(array_keys($saved),['Ident','Visible']);
-    $last=end($m->formUpdates);eq(rowByIdent(json_decode($last[2],true),'mowerGpsSatellites')['Variable'],'Angelegt');
+    eq($m->formUpdates,[]);eq(rowByIdent(selectionRows($m),'mowerGpsSatellites')['Variable'],'Angelegt');
     $rows=nativeChecklistRows($m);
     foreach($rows as &$row){if($row['Ident']==='mowerGpsSatellites')$row['Visible']=false;if($row['Ident']==='mowerHours')$row['Visible']=true;}unset($row);
     applyNativeChecklist($m,$rows);
@@ -190,18 +188,19 @@ test('Known alarms get descriptions and unknown extras explicitly retain their r
 });
 test('Form reports installed build and all manual requests have a visible response', function () {
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
-    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.8')!==false);
+    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.9')!==false);
     foreach(formButtons($form['elements']) as $button){$script=is_array($button['onClick'])?implode("\n",$button['onClick']):$button['onClick'];check(strpos($script,'echo ')!==false);}
 });
-test('Full refresh updates the open checklist and preserves unsaved choices without creating variables',function(){
+test('Full refresh leaves open editable forms and pending selections untouched',function(){
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
     $displayed=selectionRows($m);foreach($displayed as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
     $before=$m->properties['VariableVisibility'];$calls=$GLOBALS['maintainCalls'];
     $m->responses=['status'=>['successful'=>true,'status'=>['status'=>17,'distance'=>42]],'gps'=>['successful'=>true,'gps'=>['satellites'=>11]],'error'=>['successful'=>true,'errors'=>[]]];
-    $message=runRefreshButton($m,$form,$displayed);
+    $message=runRefreshButton($m,$form);
     check(strpos($message,'Manuelle Gesamtaktualisierung beendet')!==false);
-    $last=end($m->formUpdates);eq($last[0],'VariableVisibility');$rows=json_decode($last[2],true);
-    eq(rowByIdent($rows,'mowerHours')['Visible'],false);
+    eq($m->formUpdates,[]);
+    eq(rowByIdent($displayed,'mowerHours')['Visible'],false);
+    $rows=selectionRows($m); // Newly discovered candidates appear only on reopening.
     $extra='extra_'.substr(sha1('HTTP status: status.distance'),0,20);
     eq(rowByIdent($rows,$extra)['Visible'],true);eq(rowByIdent($rows,$extra)['Variable'],'Nicht angelegt');
     eq(rowByIdent($rows,'mowerGpsSatellites')['Visible'],true);
@@ -274,5 +273,20 @@ test('Data column distinguishes existence from a recorded receipt even for an un
     $m->ReceiveData(mqttPublish('mower/mower/substatus','0'));
     eq(rowByIdent(selectionRows($m),'mowerSubstatus')['Data'],'Daten empfangen');
     eq($m->values['mowerSubstatus'],0);check(!in_array(['mowerSubstatus',0],$m->setValueCalls,true));
+});
+test('Background MQTT and HTTP discovery plus Apply never rewrite editable configuration fields',function(){
+    $m=freshModule();$rows=nativeChecklistRows($m);applyNativeChecklist($m,$rows);$saved=$m->properties;
+    for($i=0;$i<3;$i++){
+        $m->ReceiveData(mqttPublish('mower/custom/new-'.$i,(string)$i));
+        $m->responses['status']=['successful'=>true,'status'=>['status'=>2,'distance'=>$i]];
+        $m->Update();$m->ApplyChanges();
+        eq($m->properties,$saved);eq($m->formUpdates,[]);eq(count($m->types),35);
+    }
+    $m->responses['error']=['successful'=>true,'errors'=>[]];
+    // A script may call the manual API while multiple editors are open. Even
+    // a legacy selection argument must not replace anyone's pending form rows.
+    $m->RefreshAllValues(json_encode([['Ident'=>'mowerHours','Visible'=>false]]));
+    eq($m->properties,$saved);eq($m->formUpdates,[]);check(isset($m->types['mowerHours']));
+    check(count(selectionRows($m))>count($rows));eq($m->properties,$saved);eq($m->formUpdates,[]);
 });
 finishTests();

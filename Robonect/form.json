@@ -67,16 +67,12 @@
         },
         {
           "type": "Label",
-          "caption": "HTTP updates supplement MQTT. The interval controls background API requests. Automatic updates protect sleep; Refresh all values may wake the mower."
+          "caption": "HTTP updates supplement MQTT. Detail requests are skipped when the mower reports sleep or off. Refresh all values also reads error history and may wake the mower."
         },
         {
           "type": "Button",
           "caption": "Refresh all values",
-          "onClick": [
-            "$selection = [];",
-            "foreach ($VariableVisibility as $row) { $selection[] = ['Ident' => $row['Ident'], 'Visible' => $row['Visible']]; }",
-            "echo ROBONECT_RefreshAllValues($id, json_encode($selection));"
-          ]
+          "onClick": "echo ROBONECT_RefreshAllValues($id);"
         }
       ]
     },
@@ -149,6 +145,10 @@
         {
           "type": "Label",
           "caption": "Data received means a value has been delivered at least once. Reception not recorded means the variable exists, but reception has not yet been recorded. Neither indicates freshness."
+        },
+        {
+          "type": "Label",
+          "caption": "The checklist is a snapshot. Reopen the configuration to see newly received values and the current variable registration status."
         }
       ]
     },

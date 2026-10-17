@@ -222,4 +222,17 @@ test('Substatus numeric and plain MQTT reception works with retained and fragmen
     eq($m->values['mowerSubstatus'],4);eq($m->values['mowerSubstatusPlain'],'Fährt zur Ladestation');eq($m->values['mowerMqttStatus'],1);
     $m->responses['status']=awake(17);$m->Update();eq($m->values['mowerSubstatus'],4);eq($m->values['mowerSubstatusPlain'],'Fährt zur Ladestation');
 });
+test('Debug distinguishes standard sleep guards and manual forced refresh without extra requests',function(){
+    $m=freshModule();$m->properties['DebugLog']=true;$m->responses['status']=awake(17);$m->Update();
+    $messages=array_column($m->debugMessages,1);check(in_array('HTTP-Status: gemeldeter Mäherzustand 17.',$messages,true));
+    check(in_array('Detailabfragen entfallen: gemeldeter Schlaf-/Aus-/unbekannter Zustand.',$messages,true));eq($m->commands,['status']);
+    $m->commands=[];$m->debugMessages=[];$m->responses['error']=['successful'=>true,'errors'=>[]];$m->RefreshAllValues();
+    check(in_array('Aktualisierung: manuelle Gesamtaktualisierung.',array_column($m->debugMessages,1),true));eq($m->commands,['status','health','gps','error']);
+});
+test('Debug explains skipped HTTP GPS when live MQTT coordinates are fresh',function(){
+    $m=freshModule();$m->properties['DebugLog']=true;receive($m,publish('mower/gps/latitude','48.5').publish('mower/gps/longitude','9.25'));
+    $m->responses['status']=awake();$m->Update();eq($m->commands,['status','health']);
+    check(in_array('GPS: frische MQTT-Koordinaten; HTTP-Abfrage entfällt.',array_column($m->debugMessages,1),true));
+    $m=freshModule();$m->responses['status']=awake(17);$m->Update();eq($m->debugMessages,[]);
+});
 finishTests();

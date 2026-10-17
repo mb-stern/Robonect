@@ -97,4 +97,12 @@ test('Manual refresh retries cached unsupported commands and reports each actual
     check(strpos($message,'GPS: Abfrage fehlgeschlagen. Robonect hat den API-Befehl abgelehnt. API-Code 8.')!==false);
     eq($m->request('health'),false);eq($m->request('counts')['counts']['health'],$after['health']);
 });
+test('HTTP trace records only actual requests and command names without credentials or parameters',function(){
+    $m=new HTTPModule();$m->properties['DebugLog']=true;$m->request('health');$m->request('health');$m->request('error&case=utf8&password=private-diagnostic-test');
+    $messages=array_column($m->debugMessages,1);
+    eq(count(array_filter($messages,function($message){return $message==='HTTP-Abfrage gesendet: health.';})),1);
+    check(in_array('HTTP-Abfrage gesendet: error.',$messages,true));
+    $log=json_encode($messages);foreach(['private-diagnostic-test','password=','127.0.0.1','48°','Schneidsystem'] as $secret)check(strpos($log,$secret)===false);
+    $m=new HTTPModule();$m->request('ok');eq($m->debugMessages,[]);
+});
 finishTests();
