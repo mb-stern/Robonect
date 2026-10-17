@@ -66,8 +66,8 @@ class Fixture(http.server.BaseHTTPRequestHandler):
                 body = body.encode('latin-1')
             elif variant == 'broken':
                 body = body.encode('latin-1')[:-1]
-        elif command == 'status-sleeping':
-            body = json.dumps({'successful': True, 'status': {'status': 17}})
+        elif command in ['status-sleeping', 'status-parked']:
+            body = json.dumps({'successful': True, 'status': {'status': 17 if command == 'status-sleeping' else 1}})
         elif command == 'invalid-utf8':
             body = b'{"successful":true,"name":"M\xe4her"}'
         elif command == 'counts':

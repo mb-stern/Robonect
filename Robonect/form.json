@@ -67,7 +67,7 @@
         },
         {
           "type": "Label",
-          "caption": "HTTP updates supplement MQTT. Detail requests are skipped when the mower reports sleep or off. Refresh all values also reads error history and may wake the mower."
+          "caption": "HTTP updates supplement MQTT. Automatic health and GPS requests require mowing, searching or charging. Refresh all values also queries parked or sleeping mowers and may wake them."
         },
         {
           "type": "Button",

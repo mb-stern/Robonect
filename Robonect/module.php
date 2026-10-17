@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.9';
+    private const MODULE_BUILD = '2026-10-17.10';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     /**
@@ -100,7 +100,8 @@ class RobonectWifiModul extends IPSModule
                 $this->WriteAttributeString('UnsupportedCommands', json_encode((object) $unsupported));
             }
             $this->updateReport['status'] = false;
-            // HTTP status request
+            // HTTP status remains available during rest; it does not request MQTT.
+            $mqttStatusRevision = $this->GetBuffer('MQTTStatusRevision');
             $data = $this->executeHTTPCommand('status');
             if (!$this->responseSuccessful($data)) {
                 $this->updateReport['statusFailure'] = $this->lastHTTPFailure;
@@ -109,7 +110,12 @@ class RobonectWifiModul extends IPSModule
             } else {
                 $this->observeHTTPValues('status', $data);
                 $mowerStatus = $this->numericValue($data['status']['status'] ?? null);
-                $this->log('HTTP-Status: gemeldeter Mäherzustand ' . ($mowerStatus === false ? 'unbekannt' : $mowerStatus) . '.');
+                if ($mqttStatusRevision !== $this->GetBuffer('MQTTStatusRevision')) {
+                    // A status message received during the HTTP request is newer
+                    // than its response snapshot. Keep the passive MQTT state.
+                    $mowerStatus = $this->numericValue($this->readMeasurement('mowerStatus', null));
+                }
+                $this->log('Statusprüfung: verwendeter Mäherzustand ' . ($mowerStatus === false ? 'unbekannt' : $mowerStatus) . '.');
                 $this->updateReport = ['status' => true, 'mowerStatus' => $mowerStatus];
                 // set values to variables
 
@@ -122,7 +128,7 @@ class RobonectWifiModul extends IPSModule
 
                 //--- Status
                 if (isset($data['status']['mode'])) $this->updateIdent("mowerMode", $data['status']['mode']);
-                if (isset($data['status']['status'])) $this->updateIdent("mowerStatus", $data['status']['status']);
+                if ($mowerStatus !== false) $this->updateIdent("mowerStatus", $mowerStatus);
                 if (isset($data['status']['stopped'])) $this->updateIdent("mowerStopped", $data['status']['stopped']);
                 if (isset($data['status']['duration'])) $this->updateIdent("mowerStatusSinceDurationSec", $data['status']['duration']);
 
@@ -162,10 +168,10 @@ class RobonectWifiModul extends IPSModule
                 if (isset($data['clock']['unix'])) $this->updateIdent("mowerUnixTimestamp", $data['clock']['unix']);
             }
 
-            // Background updates protect sleep/offline/unknown states.
-            // The explicit manual full refresh bypasses this guard.
-            if (!$forceDetails && ($mowerStatus === false || $mowerStatus <= 0 || floor($mowerStatus) != $mowerStatus || in_array((int) $mowerStatus, [16, 17], true))) {
-                $this->log('Detailabfragen entfallen: gemeldeter Schlaf-/Aus-/unbekannter Zustand.');
+            // Only an explicitly active mower permits background detail polling.
+            // Parked (1) must be allowed to enter sleep, rather than waiting for 17.
+            if (!$forceDetails && !in_array($mowerStatus, [2.0, 3.0, 4.0, 5.0], true)) {
+                $this->log('Detailabfragen entfallen: Mäher nicht aktiv (geparkt, schlafend, aus oder Zustand unklar).');
                 return;
             }
 
@@ -182,6 +188,11 @@ class RobonectWifiModul extends IPSModule
                         $this->updateIdent($ident, $health['health']['voltages'][$key] / 1000);
                     }
                 }
+            }
+
+            if (!$forceDetails && !in_array($this->numericValue($this->readMeasurement('mowerStatus', null)), [2.0, 3.0, 4.0, 5.0], true)) {
+                $this->log('GPS-Abfrage entfällt: Mäher ist inzwischen nicht mehr aktiv.');
+                return;
             }
 
             // Background updates use fresh passive MQTT coordinates.
@@ -895,6 +906,9 @@ class RobonectWifiModul extends IPSModule
         if (!$this->updateIdent($ident, $payload)) {
             $this->log('Ignored invalid MQTT value for ' . $ident);
             return;
+        }
+        if ($ident === 'mowerStatus') {
+            $this->SetBuffer('MQTTStatusRevision', (string) ((int) $this->GetBuffer('MQTTStatusRevision') + 1));
         }
         if ($ident !== 'mowerMqttStatus' && !$retained) {
             $this->updateIdent('mowerMqttStatus', 'online');

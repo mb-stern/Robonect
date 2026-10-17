@@ -105,4 +105,14 @@ test('HTTP trace records only actual requests and command names without credenti
     $log=json_encode($messages);foreach(['private-diagnostic-test','password=','127.0.0.1','48°','Schneidsystem'] as $secret)check(strpos($log,$secret)===false);
     $m=new HTTPModule();$m->request('ok');eq($m->debugMessages,[]);
 });
+test('Real HTTP parked polling contacts status only and never health, GPS or error',function(){
+    $GLOBALS['objects']=[];
+    $m=new class extends HTTPModule {
+        protected function executeHTTPCommand($command) {return parent::executeHTTPCommand($command==='status'?'status-parked':$command);}
+    };
+    $before=$m->request('counts')['counts'];for($i=0;$i<3;$i++)$m->Update();$after=$m->request('counts')['counts'];
+    eq($after['status-parked'],($before['status-parked']??0)+3);
+    foreach(['health','gps','error'] as $command)eq($after[$command]??0,$before[$command]??0);
+    eq($m->types,[]);eq($m->formUpdates,[]);
+});
 finishTests();

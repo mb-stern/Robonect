@@ -14,7 +14,7 @@ function receive($m, $bytes) {
 }
 function awake($status = 2) { return ['successful' => true, 'status' => ['status' => $status, 'battery' => 65, 'stopped' => false, 'duration' => 90], 'health' => ['temperature' => 24, 'humidity' => 42]]; }
 
-foreach ([0, 16, 17] as $status) test("No detail polling for mower state $status", function () use ($status) {
+foreach ([0, 1, 7, 8, 16, 17, 18, 99] as $status) test("No detail polling for mower state $status", function () use ($status) {
     $m = freshModule(); $m->responses['status'] = awake($status); $m->Update();
     eq($m->commands, ['status']); eq($m->values['mowerBatterySoc'], 65); eq(count($GLOBALS['semaphores']), 2);
 });
@@ -187,7 +187,7 @@ test('Manual full refresh updates current values and error history with a readab
     eq($m->values['mowerErrorCount'],1);eq(count($m->types),35);
     $calls=$m->setValueCalls;$m->RefreshAllValues();eq($m->setValueCalls,$calls);
 });
-foreach([0,16,17] as $state)test('Manual refresh explicitly reads all values even in state '.$state,function()use($state){
+foreach([0,1,7,8,16,17,18,99] as $state)test('Manual refresh explicitly reads all values even in state '.$state,function()use($state){
     $m=freshModule();$m->responses['status']=awake($state);$m->responses['error']=['successful'=>true,'errors'=>[]];
     $message=$m->RefreshAllValues();eq($m->commands,['status','health','gps','error']);
     check(strpos($message,'GPS: empfangen')!==false);check(strpos($message,'Fehlerliste: aktualisiert')!==false);
@@ -224,8 +224,8 @@ test('Substatus numeric and plain MQTT reception works with retained and fragmen
 });
 test('Debug distinguishes standard sleep guards and manual forced refresh without extra requests',function(){
     $m=freshModule();$m->properties['DebugLog']=true;$m->responses['status']=awake(17);$m->Update();
-    $messages=array_column($m->debugMessages,1);check(in_array('HTTP-Status: gemeldeter Mäherzustand 17.',$messages,true));
-    check(in_array('Detailabfragen entfallen: gemeldeter Schlaf-/Aus-/unbekannter Zustand.',$messages,true));eq($m->commands,['status']);
+    $messages=array_column($m->debugMessages,1);check(in_array('Statusprüfung: verwendeter Mäherzustand 17.',$messages,true));
+    check(in_array('Detailabfragen entfallen: Mäher nicht aktiv (geparkt, schlafend, aus oder Zustand unklar).',$messages,true));eq($m->commands,['status']);
     $m->commands=[];$m->debugMessages=[];$m->responses['error']=['successful'=>true,'errors'=>[]];$m->RefreshAllValues();
     check(in_array('Aktualisierung: manuelle Gesamtaktualisierung.',array_column($m->debugMessages,1),true));eq($m->commands,['status','health','gps','error']);
 });
@@ -234,5 +234,49 @@ test('Debug explains skipped HTTP GPS when live MQTT coordinates are fresh',func
     $m->responses['status']=awake();$m->Update();eq($m->commands,['status','health']);
     check(in_array('GPS: frische MQTT-Koordinaten; HTTP-Abfrage entfällt.',array_column($m->debugMessages,1),true));
     $m=freshModule();$m->responses['status']=awake(17);$m->Update();eq($m->debugMessages,[]);
+});
+test('Parked mower from the supplied trace receives status only on repeated automatic updates',function(){
+    $m=freshModule();$m->responses['status']=awake(1);$before=count($m->types);
+    for($i=0;$i<3;$i++)$m->Update();eq($m->commands,['status','status','status']);eq(count($m->types),$before);eq($m->formUpdates,[]);
+    eq($m->values['mowerBatterySoc'],65);eq(count($GLOBALS['semaphores']),6);
+});
+foreach([1,16,17] as $state)test('Rest state '.$state.' keeps status polling without health or GPS despite passive MQTT positions',function()use($state){
+    $m=freshModule();receive($m,publish('mower/mower/status',(string)$state));
+    receive($m,publish('mower/gps/latitude','48.5').publish('mower/gps/longitude','9.25'));
+    $m->responses['status']=awake($state);$m->Update();$m->Update();eq($m->commands,['status','status']);
+    eq($m->values['mowerGpsLatitude'],48.5);eq(count($m->types),35);eq($m->formUpdates,[]);
+});
+test('Manual full refresh reads GPS in sleep while later automatic updates use status only',function(){
+    $m=freshModule();receive($m,publish('mower/mower/status','17'));$m->responses['status']=awake(17);$m->responses['error']=['successful'=>true,'errors'=>[]];
+    $message=$m->RefreshAllValues();eq($m->commands,['status','health','gps','error']);check(strpos($message,'GPS: empfangen')!==false);
+    $m->commands=[];$m->Update();eq($m->commands,['status']);
+});
+test('An older MQTT sleep value cannot indefinitely block fresh HTTP confirmation of activity',function(){
+    $m=freshModule();receive($m,publish('mower/mower/status','17',0,true));$m->responses['status']=awake(2);
+    $m->Update();eq($m->commands,['status','health','gps']);eq($m->values['mowerStatus'],2);
+});
+test('MQTT sleep arriving during status or health stops remaining background detail requests',function(){
+    foreach(['status','health'] as $stopAfter){
+        $m=freshModule();$m->responses['status']=awake(2);
+        $m->onCommand=function($command)use($m,$stopAfter){if($command===$stopAfter)receive($m,publish('mower/mower/status','17'));};
+        $m->Update();eq($m->commands,$stopAfter==='status'?['status']:['status','health']);eq($m->values['mowerStatus'],17);
+    }
+});
+test('Known active mower states still permit health and GPS background updates',function(){
+    foreach([2,3,4,5] as $state){$m=freshModule();$m->responses['status']=awake($state);$m->Update();eq($m->commands,['status','health','gps']);}
+});
+test('Live MQTT activity during a stale sleeping HTTP response permits background details',function(){
+    $m=freshModule();$m->responses['status']=awake(17);
+    $m->onCommand=function($command)use($m){if($command==='status')receive($m,publish('mower/mower/status','2'));};
+    $m->Update();eq($m->commands,['status','health','gps']);eq($m->values['mowerStatus'],2);
+});
+test('Sleep transition remains effective when the status variable is disabled',function(){
+    $m=freshModule();$m->properties['VariableVisibility']='[{"Ident":"mowerStatus","Visible":false}]';$m->ApplyChanges();$m->responses['status']=awake(2);
+    $m->onCommand=function($command)use($m){if($command==='health')receive($m,publish('mower/mower/status','17'));};
+    $m->Update();eq($m->commands,['status','health']);check(!isset($m->types['mowerStatus']));
+});
+test('Passive sleeping MQTT telemetry never triggers HTTP requests or creates variables',function(){
+    $m=freshModule();receive($m,publish('mower/mower/status','17').publish('mower/gps/latitude','48.5').publish('mower/gps/longitude','9.25').publish('mower/health/alarm/temperaturemax','false').publish('mower/mower/error/code','80'));
+    eq($m->commands,[]);eq(count($m->types),35);eq($m->formUpdates,[]);
 });
 finishTests();

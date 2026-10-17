@@ -111,8 +111,10 @@ class TestModule extends RobonectWifiModul
     public $responses = [];
     public $commands = [];
     public $fallback = ['successful' => true];
+    public $onCommand;
     protected function executeHTTPCommand($command) {
         $this->commands[] = $command;
+        if ($this->onCommand !== null) ($this->onCommand)($command);
         $value = array_key_exists($command, $this->responses) ? $this->responses[$command] : $this->fallback;
         if ($value instanceof Throwable) throw $value;
         return $value;
