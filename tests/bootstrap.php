@@ -72,7 +72,6 @@ class IPSModule
 }
 function IPS_SetProperty($id, $name, $value) { $GLOBALS['instances'][$id]->properties[$name] = $value; }
 function IPS_ApplyChanges($id) { $GLOBALS['instances'][$id]->ApplyChanges(); }
-function ROBONECT_SaveVariableSelection($id, $selection) { return $GLOBALS['instances'][$id]->SaveVariableSelection($selection); }
 function ROBONECT_RefreshAllValues($id, $selection = '') { return $GLOBALS['instances'][$id]->RefreshAllValues($selection); }
 function GetValueInteger($id) { return $GLOBALS['objects'][$id]->values[$id]; }
 function GetValueBoolean($id) { return $GLOBALS['objects'][$id]->values[$id]; }

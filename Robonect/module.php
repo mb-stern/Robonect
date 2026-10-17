@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.6';
+    private const MODULE_BUILD = '2026-10-17.7';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     /**
@@ -68,6 +68,7 @@ class RobonectWifiModul extends IPSModule
         $this->SetTimerInterval("ROBONECT_UpdateTimer",
             $this->ReadPropertyBoolean("HTTPUpdateTimer") && $this->ReadPropertyInteger("UpdateTimer") >= 10
                 ? $this->ReadPropertyInteger("UpdateTimer") * 1000 : 0);
+        $this->refreshVariableChecklist('');
     }
 
 
@@ -1060,32 +1061,13 @@ class RobonectWifiModul extends IPSModule
         foreach ($form['elements'] as &$element) {
             if (($element['name'] ?? '') === 'VariableSelection') {
                 $element['items'][1]['values'] = $rows;
-                if (version_compare(IPS_GetKernelVersion(), '6.0', '>=')) $element['items'][1]['loadValuesFromConfiguration'] = false;
+                // Use the native List property loading/saving. Ident and Visible
+                // are persisted columns; metadata comes from these dynamic rows.
             }
             if (($element['name'] ?? '') === 'ModuleInformation') $element['items'][0]['caption'] = 'Teststand: ' . self::MODULE_BUILD;
         }
         unset($element);
         return json_encode($form);
-    }
-
-    public function SaveVariableSelection(string $selection)
-    {
-        $rows = json_decode($selection, true);
-        if (!is_array($rows) || $rows === []) throw new InvalidArgumentException('Keine gültige Variablenauswahl übergeben.');
-        $known = array_column($this->visibilityRows(), null, 'Ident');
-        $choices = $this->visibilityChoices();
-        foreach ($rows as $row) {
-            if (!is_array($row) || !isset($row['Ident'], $row['Visible']) || !is_string($row['Ident']) || !is_bool($row['Visible']) || !isset($known[$row['Ident']])) {
-                throw new InvalidArgumentException('Ungültige Variablenauswahl. Konfiguration bitte erneut öffnen.');
-            }
-            $choices[$row['Ident']] = $row['Visible'];
-        }
-        $saved = [];
-        foreach ($choices as $ident => $visible) $saved[] = ['Ident' => $ident, 'Visible' => $visible];
-        IPS_SetProperty($this->InstanceID, 'VariableVisibility', json_encode($saved));
-        IPS_ApplyChanges($this->InstanceID);
-        $this->UpdateFormField('VariableVisibility', 'values', json_encode($this->visibilityRows()));
-        return true;
     }
 
     protected function additionalValueDefinition(string $source)

@@ -41,11 +41,11 @@ Im Formular steht nur noch „Alle Werte aktualisieren“ mit sichtbarer Rückme
 
 Die Gesamtaktualisierung legt keine neuen Variablen an und überträgt keine Steuerbefehle oder Wochenpläne. „Alle Werte“ bezieht sich auf die bereits unterstützten Istwerte, nicht auf sämtliche zusätzlichen API-Kommandos wie `battery`, `motor` oder `hour`.
 
-Neue vorausgewählte Zusatzwerte können mit **„Variablenauswahl übernehmen“** ausdrücklich gespeichert werden, auch wenn die Haken nicht umgeschaltet wurden. Der Knopf verwendet die aktuell angezeigten Zeilen, validiert Idents und boolesche Haken, speichert die Auswahl über `IPS_SetProperty` und wendet sie mit `IPS_ApplyChanges` an. Andere ungespeicherte Formularfelder werden nicht überschrieben. Die Spalte **„Variable“** unterscheidet „Angelegt“ und „Nicht angelegt“; sie wird anschließend aktualisiert. Der Empfangsstatus ist davon getrennt. Auch das gewöhnliche Speichern der Konfiguration bleibt unterstützt. Ohne gespeicherte Auswahl werden weiterhin keine neuen Objekte durch Empfang oder Neustart angelegt.
+Die Checkboxen werden ausschließlich über Symcons normales **„Änderungen übernehmen“** gespeichert. Die Liste nutzt die reguläre Eigenschaftsanbindung mit dem Standard `loadValuesFromConfiguration: true`. Nur die Spalten `Ident` und `Visible` werden gespeichert; Namen, Beschreibungen und Daten-/Anlagenstatus werden dynamisch ergänzt. Die Reihenfolge der gespeicherten Zeilen bleibt erhalten, damit Symcons Zusammenführen nach Zeilenindex keine Haken anderen Idents zuordnet. Es gibt keinen zusätzlichen Übernehmen-Knopf, keine eigene Speicherfunktion und keine sofortige Anlage beim Umschalten. Nach dem regulären Speichern übernimmt `ApplyChanges()` Anlage/Löschung über die SDK-Methoden und aktualisiert die Spalte **„Variable“**. Abbrechen, bloßer Empfang und ein Neustart ohne gespeicherte neue Auswahl legen keine Zusatzvariablen an.
 
 Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Bereits verwendete Idents und Datentypen bleiben erhalten.
 
-Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.6**; Bibliotheks-Build 6 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend die sichtbare Variablenauswahl übernehmen.
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.7**; Bibliotheks-Build 7 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend Checkboxänderungen über den normalen Symcon-Dialog übernehmen.
 
 ## Korrigierte Fehler
 
@@ -113,7 +113,7 @@ Diese weiteren Befehle wurden nicht automatisch aktiviert. Mehrere Datenbefehle 
 
 ## Grenzen und Praxistest
 
-Noch kein Test in einer echten IP-Symcon-Instanz und kein Zugriff auf den Automower 310. Die automatisierten Tests verwenden ein Symcon-Testdouble und einen lokalen HTTP-Simulator, keine Mähersteuerung. Die native Darstellung des Formulars und das Speichern aus der echten Symcon-9.0-Oberfläche müssen am Zielsystem geprüft werden. Die Tests führen den PHP-Code des neuen Auswahlknopfs mit iterierbaren Formularzeilen und SDK-Testdouble aus; sie ersetzen keine laufende Symcon-Instanz.
+Noch kein Test in einer echten IP-Symcon-Instanz und kein Zugriff auf den Automower 310. Die automatisierten Tests verwenden ein Symcon-Testdouble und einen lokalen HTTP-Simulator, keine Mähersteuerung. Die native Darstellung des Formulars und der Änderungsdialog der echten Symcon-9.0-Oberfläche müssen am Zielsystem geprüft werden. Die Tests bilden die dokumentierte Listengrenze nach: gespeicherte Spalten laden, eine Checkbox ändern, `Ident`/`Visible` als Listeneigenschaft speichern und `ApplyChanges()` ausführen. Anlage, Löschen, Abbrechen, neue Zeilen und Zeilenzuordnung werden mit einem SDK-Testdouble geprüft; das ersetzt keine laufende Symcon-Instanz.
 
 Die Statusabfrage läuft weiter. Sie ist laut Forum üblicherweise ohne Aufwecken möglich; es gibt auch modell-/zustandsabhängige Berichte. Die Nachtruhe deshalb am Zielgerät beobachten. Ein Zustandswechsel zwischen Statusantwort und Detailabfrage lässt sich ohne Gerätezugriff nicht ausschließen.
 
@@ -125,7 +125,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **183 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **184 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php

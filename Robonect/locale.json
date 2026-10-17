@@ -38,14 +38,13 @@
       "Data": "Daten",
       "Diagnostics": "Diagnose",
       "Information and support": "Informationen und Unterstützung",
-      "New values start checked. Save the displayed checkboxes with Apply variable selection. Selected variables are created; unchecked variables are deleted. Additional fields have a description and source.": "Neue Werte sind vorausgewählt. „Variablenauswahl übernehmen“ speichert die sichtbaren Haken und legt die Variablen an. Abgewählte Variablen werden gelöscht; erneutes Aktivieren vergibt eine neue ID. Zusatzfelder haben eine Beschreibung samt Quelle.",
       "Description": "Beschreibung",
       "Variable": "Variable",
-      "Apply variable selection": "Variablenauswahl übernehmen",
       "Refresh error history": "Fehlerliste aktualisieren",
       "Refresh all values": "Alle Werte aktualisieren",
       "HTTP updates supplement MQTT. The interval controls background API requests. Automatic updates protect sleep; Refresh all values may wake the mower.": "HTTP-Updates ergänzen MQTT. Das Intervall bestimmt die regelmäßigen API-Abfragen. Im Hintergrund wird der Schlaf geschont; „Alle Werte aktualisieren“ kann den Mäher aufwecken.",
-      "HTTP update interval": "HTTP-Abfrageintervall"
+      "HTTP update interval": "HTTP-Abfrageintervall",
+      "New values start checked. Save checkbox changes with Symcon Apply Changes. Selected variables are created; unchecked variables are deleted. Re-enabling creates a new ID.": "Neue Werte sind vorausgewählt. Änderungen an den Checkboxen über Symcons „Änderungen übernehmen“ speichern. Dabei werden ausgewählte Variablen angelegt und abgewählte gelöscht. Erneutes Aktivieren vergibt eine neue ID."
     }
   }
 }

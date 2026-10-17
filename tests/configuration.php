@@ -11,6 +11,27 @@ function choose($m,$ident,$visible) {
     foreach($rows as &$row) if($row['Ident']===$ident)$row['Visible']=$visible;
     unset($row); $m->properties['VariableVisibility']=json_encode($rows);
 }
+// Model the documented native List boundary: load persisted columns by row
+// index, and save the configured columns only when the user accepts Apply.
+function nativeChecklistRows($m) {
+    $form=json_decode($m->GetConfigurationForm(),true);
+    $list=$form['elements'][2]['items'][1];$rows=$list['values'];
+    if($list['loadValuesFromConfiguration']??true){
+        $saved=json_decode($m->properties['VariableVisibility'],true)?:[];
+        foreach($saved as $index=>$row)if(isset($rows[$index]))foreach($row as $key=>$value)$rows[$index][$key]=$value;
+    }
+    return $rows;
+}
+function applyNativeChecklist($m,$rows) {
+    $form=json_decode($m->GetConfigurationForm(),true);$list=$form['elements'][2]['items'][1];$saved=[];
+    foreach($rows as $row){
+        $entry=[];
+        foreach($list['columns'] as $column)if($column['save']??isset($column['edit']))$entry[$column['name']]=$row[$column['name']];
+        $saved[]=$entry;
+    }
+    IPS_SetProperty($m->InstanceID,$list['name'],json_encode($saved));
+    IPS_ApplyChanges($m->InstanceID);
+}
 function mqttPublish($topic,$payload) {
     $body=pack('n',strlen($topic)).$topic.$payload; $length=strlen($body); $encoded='';
     do{$byte=$length%128;$length=intdiv($length,128);$encoded.=chr($byte|($length?128:0));}while($length);
@@ -25,7 +46,7 @@ test('Default config preserves all 35 original variables and creates no extras',
 test('Form is compact and keeps login/update properties',function(){
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);eq(count($form['elements']),5);
     foreach($form['elements'] as $element)eq($element['type'],'ExpansionPanel');
-    eq($form['elements'][0]['expanded'],true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration'],false);
+    eq($form['elements'][0]['expanded'],true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration']??true,true);
     $names=[];$walk=function($elements)use(&$walk,&$names){foreach($elements as $e){if(isset($e['name']))$names[]=$e['name'];if(isset($e['items']))$walk($e['items']);}};$walk($form['elements']);
     foreach(['IPAddress','Username','Password','MQTTTopic','HTTPUpdateTimer','UpdateTimer','MowingTime','DebugLog','VariableVisibility'] as $name)check(in_array($name,$names,true));
 });
@@ -99,33 +120,40 @@ test('Configuration defaults do not highlight an unrequested mowing action',func
 test('Repeated unknown telemetry does not rewrite a registered variable',function(){
     $m=freshModule();$m->ReceiveData(mqttPublish('mower/custom/first','a'));$m->properties['VariableVisibility']=json_encode(selectionRows($m));$m->ApplyChanges();$calls=$m->setValueCalls;$m->ReceiveData(mqttPublish('mower/custom/first','a'));eq($m->setValueCalls,$calls);
 });
-test('The form button saves all displayed default checkboxes and creates named extra variables', function () {
-    $m=freshModule();
-    $m->responses['status']=['successful'=>true,'status'=>['status'=>17,'distance'=>42]];
-    $m->Update();
-    $ident='extra_'.substr(sha1('HTTP status: status.distance'),0,20);
-    $form=json_decode($m->GetConfigurationForm(),true);
-    $row=rowByIdent(selectionRows($m),$ident);
-    eq($row['Visible'],true);eq($row['Variable'],'Nicht angelegt');
-    check(strpos($row['Description'],'Metern')!==false);
-    check(strpos($row['Description'],'HTTP status: status.distance')!==false);
-    $m->ApplyChanges();check(!isset($m->types[$ident]));
-    $id=$m->InstanceID;
-    $VariableVisibility=new ArrayIterator(selectionRows($m));
-    eval(implode("\n",$form['elements'][2]['items'][2]['onClick']));
-    eq($m->values[$ident],'42');eq($m->variableNames[$ident],'Entfernung');
-    eq(rowByIdent(selectionRows($m),$ident)['Variable'],'Angelegt');
-    $last=end($m->formUpdates);eq($last[0],'VariableVisibility');eq($last[1],'values');
-    eq(rowByIdent(json_decode($last[2],true),$ident)['Variable'],'Angelegt');
-    choose($m,$ident,false);$m->SaveVariableSelection($m->properties['VariableVisibility']);
-    check(!isset($m->types[$ident]));
+test('Native Apply saves checkboxes and creates GPS and raw variables through ApplyChanges', function () {
+    $m=freshModule();$m->setMeasurement('mowerGpsSatellites',11);
+    $m->ReceiveData(mqttPublish('mower/custom/first','42'));
+    $rows=nativeChecklistRows($m);
+    $extra=array_values(array_filter($rows,function($row){return strpos($row['Ident'],'extra_')===0;}))[0]['Ident'];
+    foreach($rows as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
+    check(!isset($m->types['mowerGpsSatellites'],$m->types[$extra]));
+    applyNativeChecklist($m,$rows);
+    eq($m->values['mowerGpsSatellites'],11);eq($m->values[$extra],'42');check(!isset($m->types['mowerHours']));
+    foreach(json_decode($m->properties['VariableVisibility'],true) as $saved)eq(array_keys($saved),['Ident','Visible']);
+    $last=end($m->formUpdates);eq(rowByIdent(json_decode($last[2],true),'mowerGpsSatellites')['Variable'],'Angelegt');
+    $rows=nativeChecklistRows($m);
+    foreach($rows as &$row){if($row['Ident']==='mowerGpsSatellites')$row['Visible']=false;if($row['Ident']==='mowerHours')$row['Visible']=true;}unset($row);
+    applyNativeChecklist($m,$rows);
+    check(!isset($m->types['mowerGpsSatellites']));check(isset($m->types[$extra],$m->types['mowerHours']));
 });
-test('Malformed explicit variable selections cannot change properties or create objects', function () {
-    $m=freshModule();$before=$m->properties;$calls=$GLOBALS['maintainCalls'];
-    foreach(['null','{}','[]','broken','[{"Ident":"invented","Visible":true}]','[{"Ident":"mowerHours","Visible":"false"}]'] as $selection) {
-        try{$m->SaveVariableSelection($selection);throw new LogicException('Invalid selection accepted');}catch(InvalidArgumentException $e){}
-        eq($m->properties,$before);eq($GLOBALS['maintainCalls'],$calls);
-    }
+test('Native saved rows stay aligned with newly appended discoveries', function () {
+    $m=freshModule();$m->ReceiveData(mqttPublish('mower/custom/first','first'));
+    $rows=array_reverse(nativeChecklistRows($m));$first=$rows[0]['Ident'];$rows[0]['Visible']=false;
+    applyNativeChecklist($m,$rows);$saved=json_decode($m->properties['VariableVisibility'],true);
+    $m->ReceiveData(mqttPublish('mower/custom/second','second'));
+    $rows=nativeChecklistRows($m);
+    eq(array_slice(array_column($rows,'Ident'),0,count($saved)),array_column($saved,'Ident'));
+    eq(rowByIdent($rows,$first)['Visible'],false);$last=end($rows);eq($last['Visible'],true);
+    check(!isset($m->types[$last['Ident']]));eq(count(array_unique(array_column($rows,'Ident'))),count($rows));
+});
+test('Unapplied checkbox edits cannot create variables or change persisted choices', function () {
+    $m=freshModule();$m->setMeasurement('mowerGpsSatellites',11);$rows=nativeChecklistRows($m);
+    foreach($rows as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
+    $before=$m->properties['VariableVisibility'];
+    // The user cancels: no native property save happens. A later restart/apply
+    // must still use the persisted settings, not these pending form values.
+    $m->ApplyChanges();eq($m->properties['VariableVisibility'],$before);
+    check(isset($m->types['mowerHours']));check(!isset($m->types['mowerGpsSatellites']));
 });
 test('Known alarms get descriptions and unknown extras explicitly retain their raw source', function () {
     $m=freshModule();
@@ -141,7 +169,7 @@ test('Known alarms get descriptions and unknown extras explicitly retain their r
 });
 test('Form reports installed build and all manual requests have a visible response', function () {
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
-    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.6')!==false);
+    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.7')!==false);
     foreach($form['actions'] as $button){$script=is_array($button['onClick'])?implode("\n",$button['onClick']):$button['onClick'];check(strpos($script,'echo ')!==false);}
 });
 test('Full refresh updates the open checklist and preserves unsaved choices without creating variables',function(){

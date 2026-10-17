@@ -78,7 +78,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "New values start checked. Save the displayed checkboxes with Apply variable selection. Selected variables are created; unchecked variables are deleted. Additional fields have a description and source."
+          "caption": "New values start checked. Save checkbox changes with Symcon Apply Changes. Selected variables are created; unchecked variables are deleted. Re-enabling creates a new ID."
         },
         {
           "type": "List",
@@ -136,15 +136,6 @@
             }
           ],
           "values": []
-        },
-        {
-          "type": "Button",
-          "caption": "Apply variable selection",
-          "onClick": [
-            "$selection = [];",
-            "foreach ($VariableVisibility as $row) { $selection[] = ['Ident' => $row['Ident'], 'Visible' => $row['Visible']]; }",
-            "ROBONECT_SaveVariableSelection($id, json_encode($selection));"
-          ]
         }
       ]
     },
