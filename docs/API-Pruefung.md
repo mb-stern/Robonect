@@ -46,7 +46,7 @@ Die Checkboxen werden ausschließlich über Symcons normales **„Änderungen ü
 
 Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Idents und Datentypen bleiben erhalten, mit Ausnahme der ausdrücklich gewünschten Zusammenfassung bisheriger Einzelalarme.
 
-Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.10**; Bibliotheks-Build 10 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend Checkboxänderungen über den normalen Symcon-Dialog übernehmen.
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.11**; Bibliotheks-Build 11 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend Checkboxänderungen über den normalen Symcon-Dialog übernehmen.
 
 Der Aktualisierungsknopf steht im Bereich „Aktualisierung und Vorgabewerte“. Seit Build 9 ruft sein Skript ausschließlich `ROBONECT_RefreshAllValues($id)` auf und benötigt keine Formularvariablen mehr. Damit entfällt auch die frühere Scope-Abhängigkeit von `$VariableVisibility`. `ApplyChanges()` und Gesamtabrufe senden keine Formularänderungen mehr. Die Tests prüfen, dass wiederholte Hintergrundabrufe, MQTT-Erkennung, Apply und Gesamtabrufe weder Eigenschaften speichern noch offene Checklisten überschreiben. Neu erkannte Werte werden beim erneuten Öffnen als Kandidaten angezeigt. Ein veralteter optionaler Auswahlparameter der Skriptfunktion bleibt aus Kompatibilitätsgründen akzeptiert, verändert aber kein geöffnetes Formular. Das tatsächliche Ausbleiben des wiederholten Speicherdialogs ist noch in Symcon zu bestätigen.
 
@@ -138,6 +138,18 @@ Die [Home-Assistant-Integration](https://github.com/geertmeersman/robonect/blob/
 
 Der lokale Testlauf prüft die drei geparkten Wiederholungen aus dem Dump, das Auslassen der Details in Ruhe und Fehlerzuständen, aktive Zustände, MQTT-Zustandswechsel während Status-/Health-Abfragen, deaktivierte Statusvariablen und den ausdrücklich erzwungenen manuellen Gesamtabruf. Ein Langzeittest mit Build 10 am Mäher steht aus. Zur Bestätigung automatische HTTP-Aktualisierung und MQTT wieder aktivieren und den Mäher ohne manuelle Gesamtabrufe in Ruhe lassen. Bei Status 1/17 soll der Debug nur `status` und den Hinweis auf ausgelassene Detailabfragen zeigen.
 
+## Laufende Abrufe während eines Modulupdates
+
+Der nachgereichte TimerPool-Auszug zeigt die wiederholte SDK-Warnung **`InstanceInterface is not available`**. Bei einem Modulupdate kann ein noch laufender PHP-Aufruf seine bisherige Instanzschnittstelle verlieren. Nach einer HTTP-Antwort führten weitere Status-, Attribut-, Buffer- und Debug-Zugriffe zu einer Kette gleicher Warnungen. Ein bloßer Existenztest der Instanz vor dem Netzwerkaufruf würde den Wechsel während des Wartens nicht abdecken.
+
+**Build 11** schützt die Laufzeitoperationen mit einer zeitlich auf den Aufruf begrenzten Behandlung genau dieser SDK-Warnung. Sie unterbricht die laufende Operation unmittelbar. Timer, MQTT-Verarbeitung und Fehlerlistenabruf verlassen ihre erfolgreich betretenen Semaphoren weiterhin über `finally`. Danach finden keine Debug- oder Statuszugriffe auf die abgelöste Schnittstelle statt. Der nächste reguläre Timerlauf kann die neue Instanz verwenden. Es gibt keine zusätzliche Abfrage, keinen automatischen Wiederholungsversuch und keine Wiederholung von Steuerbefehlen. Ein manueller Gesamtabruf meldet stattdessen verständlich, dass das Modul gerade neu geladen wird.
+
+Verschachtelte Operationen teilen sich die äußere Behandlung, damit ein unterbrochener Gesamtabruf nicht mit GPS oder Fehlerhistorie fortfährt. Die allgemeine HTTP-/Werte-Fehlerbehandlung reicht diese Unterbrechung durch. Alle anderen Warnungen gehen an den vorherigen PHP-Fehlerhandler; andere Exceptions werden durch die neue Behandlung nicht verschluckt. Der vorherige Handler wird nach Erfolg, Abbruch und Exceptions stets wiederhergestellt. Es wird weder pauschal mit `@` unterdrückt noch das PHP-Fehlerniveau geändert.
+
+Die Tests simulieren den Verlust der Schnittstelle vor dem Timer und während Status-/Fehlerlistenabfragen, MQTT-Schreibzugriffen und manuellen Aktionen. Sie prüfen genau einen fehlgeschlagenen SDK-Zugriff, das Ende weiterer Abfragen, freigegebene Sperren, wiederhergestellte Fehlerhandler und einen später wieder erfolgreichen Lauf. Echte lokale cURL-Aufrufe prüfen außerdem eine Unterbrechung während der Transportvorbereitung und nach einer HTTP-Antwort. Diese Simulation ersetzt keinen tatsächlichen Symcon-Modulneuladevorgang.
+
+Ein bereits laufender Aufruf des alten Builds enthält diesen Schutz noch nicht und kann bei der ersten Installation weiterhin warnen. Die Behandlung greift für Aufrufe des neuen Builds bei späteren Neuladevorgängen. Neue Konfigurationseigenschaften, Variablen oder Formularschreibzugriffe entstehen dadurch nicht.
+
 ## Grenzen und Praxistest
 
 Noch kein Test in einer echten IP-Symcon-Instanz und kein Zugriff auf den Automower 310. Die automatisierten Tests verwenden ein Symcon-Testdouble und einen lokalen HTTP-Simulator, keine Mähersteuerung. Die native Darstellung des Formulars und der Änderungsdialog der echten Symcon-9.0-Oberfläche müssen am Zielsystem geprüft werden. Die Tests bilden die dokumentierte Listengrenze nach: gespeicherte Spalten laden, eine Checkbox ändern, `Ident`/`Visible` als Listeneigenschaft speichern und `ApplyChanges()` ausführen. Anlage, Löschen, Abbrechen, neue Zeilen und Zeilenzuordnung werden mit einem SDK-Testdouble geprüft; das ersetzt keine laufende Symcon-Instanz.
@@ -152,7 +164,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **218 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **232 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php

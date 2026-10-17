@@ -122,6 +122,8 @@ Die Spannungs-, Temperatur- und Feuchtigkeitsalarme werden in einer Stringvariab
 
 Bei unerwartetem Aufwachen lässt sich unter „Diagnose“ das vorhandene Debug-Logging einschalten. Der Symcon-Debug zeigt dann Standardaufruf oder manuelle Gesamtaktualisierung, die tatsächlich gestarteten HTTP-Befehle, den HTTP-Mäherstatus und ausgelassene Detail-/GPS-Abfragen. Zugangsdaten, Parameter und Koordinaten werden dabei nicht protokolliert. Build 9 entfernt das automatische Ersetzen der editierbaren Checkliste. Build 10 lässt zusätzlich automatische Detailabfragen bereits im geparkten Zustand aus. Der Automower 310 mit Robonect V1.6 wurde durch einen einzelnen GPS-HTTP-Abruf sowohl mit als auch ohne MQTT geweckt; das Ergebnis hat der Nutzer am Gerät beobachtet. MQTT-Empfang selbst löst im Modul keine Abfrage und keinen Sendebefehl aus. Die Wirksamkeit der geänderten Automatik ist noch am Gerät zu bestätigen.
 
+Beim Neuladen des Moduls kann ein noch laufender Abruf seine Symcon-Instanzschnittstelle verlieren. Build 11 bricht den Lauf bei der konkreten Meldung `InstanceInterface is not available` ab und gibt seine Sperren frei. Der nächste reguläre Timerlauf verwendet die neue Instanz. Andere PHP-Warnungen werden weiterhin an den bisherigen Fehlerhandler weitergegeben. Ein manueller Gesamtabruf meldet den unterbrochenen Neuladevorgang, ohne Steuerbefehle automatisch zu wiederholen.
+
 #### Update( int $Instanz )
 Mit dieser Funktion können die Statusvariablen manuell aktualisiert werden.
 ```

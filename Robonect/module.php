@@ -3,9 +3,11 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.10';
+    private const MODULE_BUILD = '2026-10-17.11';
     private $updateReport = [];
     private $lastHTTPFailure = '';
+    private $instanceGuardActive = false;
+    private $instanceInterfaceUnavailable = false;
     /**
      * Die folgenden Funktionen stehen automatisch zur Verfügung, wenn das Modul über die "Module Control" eingefügt wurden.
      * Die Funktionen werden, mit dem selbst eingerichteten Prefix, in PHP und JSON-RPC wiefolgt zur Verfügung gestellt:
@@ -78,7 +80,7 @@ class RobonectWifiModul extends IPSModule
 
     public function Update()
     {
-        return $this->updateValues(false);
+        return $this->withInstanceInterface(function () { return $this->updateValues(false); });
     }
 
     protected function updateValues(bool $forceDetails)
@@ -236,6 +238,11 @@ class RobonectWifiModul extends IPSModule
 
     public function RefreshAllValues(string $selection = '')
     {
+        return $this->withInstanceInterface(function () use ($selection) { return $this->refreshAllValuesInternal($selection); }, 'Aktualisierung unterbrochen: Die Modulinstanz wird gerade neu geladen. Bitte erneut versuchen.');
+    }
+
+    protected function refreshAllValuesInternal(string $selection = '')
+    {
         // Keep the optional argument for existing callers. Runtime refreshes must
         // not replace editable form values in any open configuration window.
         $this->refreshCachedErrorHistory();
@@ -277,6 +284,11 @@ class RobonectWifiModul extends IPSModule
     }
 
     public function UpdateErrorList()
+    {
+        return $this->withInstanceInterface(function () { return $this->updateErrorListInternal(); }, false);
+    }
+
+    protected function updateErrorListInternal()
     {
         $this->lastHTTPFailure = '';
         $semaphore = 'Robonect' . $this->InstanceID . '_ErrorList';
@@ -400,6 +412,11 @@ class RobonectWifiModul extends IPSModule
 
     public function ClearErrors()
     {
+        return $this->withInstanceInterface(function () { return $this->clearErrorsInternal(); }, false);
+    }
+
+    protected function clearErrorsInternal()
+    {
         $data = $this->executeHTTPCommand('error&clear=1');
         if ($data == false) {
             return false;
@@ -445,6 +462,11 @@ class RobonectWifiModul extends IPSModule
     }
 
     public function StartMowingNow(int $duration)
+    {
+        return $this->withInstanceInterface(function () use ($duration) { return $this->startMowingInternal($duration); }, false);
+    }
+
+    protected function startMowingInternal(int $duration)
     {
         // start mowing now for XX minutes and go HOME afterwards (tested)
         $durationToRun = $duration;
@@ -497,6 +519,11 @@ class RobonectWifiModul extends IPSModule
     }
 
     public function GetTimerFromMower()
+    {
+        return $this->withInstanceInterface(function () { return $this->getTimerFromMowerInternal(); }, false);
+    }
+
+    protected function getTimerFromMowerInternal()
     {
         $data = $this->executeHTTPCommand('timer');
         if (!$this->responseSuccessful($data) || empty($data['timer']) || !is_array($data['timer'])) return false;
@@ -553,6 +580,11 @@ class RobonectWifiModul extends IPSModule
     }
 
     public function SetTimerToMower()
+    {
+        return $this->withInstanceInterface(function () { return $this->setTimerToMowerInternal(); }, false);
+    }
+
+    protected function setTimerToMowerInternal()
     {
         $eventID = $this->weekPlanEventID();
         if ($eventID === false) return false;
@@ -624,6 +656,11 @@ class RobonectWifiModul extends IPSModule
 
     protected function executeHTTPCommand($command)
     {
+        return $this->withInstanceInterface(function () use ($command) { return $this->executeHTTPCommandInternal($command); }, false);
+    }
+
+    protected function executeHTTPCommandInternal($command)
+    {
         $this->lastHTTPFailure = '';
         $address = trim($this->ReadPropertyString('IPAddress'));
         if ($address === '0.0.0.0' || $address === '') {
@@ -663,6 +700,7 @@ class RobonectWifiModul extends IPSModule
                 return $this->httpFailure($reason . ' HTTP ' . $httpCode . ', cURL ' . curl_errno($ch) . '.', 202);
             }
         } catch (Throwable $e) {
+            if ($this->instanceInterfaceUnavailable) throw $e;
             return $this->httpFailure('Bei der HTTP-Abfrage ist ein Verbindungsfehler aufgetreten.', 202);
         } finally {
             curl_close($ch);
@@ -734,6 +772,11 @@ class RobonectWifiModul extends IPSModule
 
     public function RequestAction($Ident, $Value)
     {
+        return $this->withInstanceInterface(function () use ($Ident, $Value) { return $this->processRequestAction($Ident, $Value); }, false);
+    }
+
+    protected function processRequestAction($Ident, $Value)
+    {
 
         switch ($Ident) {
             case "mowerModeInteractive":
@@ -793,6 +836,11 @@ class RobonectWifiModul extends IPSModule
     }
 
     public function ReceiveData($JSONString)
+    {
+        return $this->withInstanceInterface(function () use ($JSONString) { return $this->receiveDataSynchronized($JSONString); }, false);
+    }
+
+    protected function receiveDataSynchronized($JSONString)
     {
         $semaphore = 'Robonect' . $this->InstanceID . '_MQTT';
         if (!IPS_SemaphoreEnter($semaphore, 1000)) return true;
@@ -1006,6 +1054,7 @@ class RobonectWifiModul extends IPSModule
             $this->markAvailable($ident);
             return true;
         } catch (Throwable $e) {
+            if ($this->instanceInterfaceUnavailable) throw $e;
             $this->log('Update for Ident ' . $ident . ' failed');
             return false;
         }
@@ -1396,8 +1445,41 @@ class RobonectWifiModul extends IPSModule
         $walk($data, '');
     }
 
+    protected function withInstanceInterface(callable $operation, $unavailableResult = false)
+    {
+        // Nested public operations share the outer boundary, so an interrupted
+        // refresh cannot continue with another API request after a swallowed error.
+        if ($this->instanceGuardActive) return $operation();
+        $this->instanceGuardActive = true;
+        $this->instanceInterfaceUnavailable = false;
+        $abort = null;
+        $previousHandler = null;
+        $previousHandler = set_error_handler(function ($severity, $message, $file, $line) use (&$abort, &$previousHandler) {
+            if ($message === 'InstanceInterface is not available') {
+                $this->instanceInterfaceUnavailable = true;
+                $abort = new RuntimeException($message);
+                throw $abort;
+            }
+            return $previousHandler !== null ? $previousHandler($severity, $message, $file, $line) : false;
+        });
+        try {
+            return $operation();
+        } catch (Throwable $error) {
+            if ($error !== $abort) throw $error;
+            // No SDK logging/status changes here: the old instance is detached.
+            $this->lastHTTPFailure = 'Die Modulinstanz wird gerade neu geladen. Bitte erneut versuchen.';
+            return $unavailableResult;
+        } finally {
+            restore_error_handler();
+            $this->instanceGuardActive = false;
+            $this->instanceInterfaceUnavailable = false;
+        }
+    }
+
     protected function log(string $text)
     {
+        // Cleanup must not make further SDK calls after the interface detached.
+        if ($this->instanceInterfaceUnavailable) return;
         if ($this->ReadPropertyBoolean("DebugLog")) {
             $this->SendDebug("UpdateIdent for Ident ", $text, 0);
         };

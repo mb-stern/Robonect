@@ -115,4 +115,26 @@ test('Real HTTP parked polling contacts status only and never health, GPS or err
     foreach(['health','gps','error'] as $command)eq($after[$command]??0,$before[$command]??0);
     eq($m->types,[]);eq($m->formUpdates,[]);
 });
+test('Real HTTP response followed by interface detachment aborts without marking the mower offline',function(){
+    $m=new class extends HTTPModule {
+        public $detachBeforeStatus=true;
+        public function SetStatus($status) {
+            if($this->detachBeforeStatus){$this->detachBeforeStatus=false;$this->interfaceAvailable=false;}
+            parent::SetStatus($status);
+        }
+    };
+    eq($m->request('ok'),false);eq($m->unavailableSDKCalls,1);eq($m->status,null);
+    $m->interfaceAvailable=true;eq($m->request('ok')['successful'],true);eq($m->status,102);
+});
+test('Interface detachment inside the transport try block escapes its generic HTTP error catch',function(){
+    $inspector=new HTTPModule();$before=$inspector->request('counts')['counts']['ok'];
+    $m=new class extends HTTPModule {
+        public function ReadPropertyBoolean($name) {
+            if($name==='DebugLog')$this->interfaceAvailable=false;
+            return parent::ReadPropertyBoolean($name);
+        }
+    };
+    eq($m->request('ok'),false);eq($m->unavailableSDKCalls,1);eq($m->status,null);
+    eq($inspector->request('counts')['counts']['ok'],$before);
+});
 finishTests();

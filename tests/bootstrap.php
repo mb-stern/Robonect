@@ -16,33 +16,39 @@ class IPSModule
     public $types = [];
     public $buffers = [];
     public $failSetValue = false;
+    public $interfaceAvailable = true;
+    public $unavailableSDKCalls = 0;
+    public $detachOnSetValue = false;
     public $setValueCalls = [];
     public $formUpdates = [];
     public $debugMessages = [];
     public $variableNames = [];
     public $status;
     public $timerIntervals = [];
+    protected function requireInterface() {
+        if (!$this->interfaceAvailable) { $this->unavailableSDKCalls++; trigger_error('InstanceInterface is not available', E_USER_WARNING); }
+    }
     public function Create() {}
     public function ApplyChanges() {}
-    public function ReadPropertyString($name) { return (string) $this->properties[$name]; }
-    public function ReadPropertyBoolean($name) { return (bool) $this->properties[$name]; }
-    public function ReadPropertyInteger($name) { return (int) $this->properties[$name]; }
+    public function ReadPropertyString($name) { $this->requireInterface(); return (string) $this->properties[$name]; }
+    public function ReadPropertyBoolean($name) { $this->requireInterface(); return (bool) $this->properties[$name]; }
+    public function ReadPropertyInteger($name) { $this->requireInterface(); return (int) $this->properties[$name]; }
     public function RegisterPropertyString($name, $value) { if (!isset($this->properties[$name])) $this->properties[$name] = $value; }
     public function RegisterPropertyInteger($name, $value) { $this->RegisterPropertyString($name, $value); }
     public function RegisterPropertyBoolean($name, $value) { $this->RegisterPropertyString($name, $value); }
-    public function ReadAttributeString($name) { return $this->attributes[$name]; }
-    public function WriteAttributeString($name, $value) { $this->attributes[$name] = $value; }
+    public function ReadAttributeString($name) { $this->requireInterface(); return $this->attributes[$name]; }
+    public function WriteAttributeString($name, $value) { $this->requireInterface(); $this->attributes[$name] = $value; }
     public function RegisterAttributeString($name, $value) { if (!isset($this->attributes[$name])) $this->attributes[$name] = $value; }
-    public function GetBuffer($name) { return $this->buffers[$name] ?? ''; }
-    public function SetBuffer($name, $value) { $this->buffers[$name] = $value; }
-    public function SetStatus($status) { $this->status = $status; }
+    public function GetBuffer($name) { $this->requireInterface(); return $this->buffers[$name] ?? ''; }
+    public function SetBuffer($name, $value) { $this->requireInterface(); $this->buffers[$name] = $value; }
+    public function SetStatus($status) { $this->requireInterface(); $this->status = $status; }
     public function RegisterTimer($name, $interval, $script) {}
-    public function SetTimerInterval($name, $interval) { $this->timerIntervals[$name] = $interval; }
-    public function SendDebug($name, $message, $format) { $this->debugMessages[] = [$name, $message]; }
+    public function SetTimerInterval($name, $interval) { $this->requireInterface(); $this->timerIntervals[$name] = $interval; }
+    public function SendDebug($name, $message, $format) { $this->requireInterface(); $this->debugMessages[] = [$name, $message]; }
     public function UpdateFormField($name, $parameter, $value) { $this->formUpdates[] = [$name, $parameter, $value]; }
     public function EnableAction($ident) {}
     public function MaintainAction($ident, $enabled) { return true; }
-    public function GetValue($ident) { return $this->values[$ident]; }
+    public function GetValue($ident) { $this->requireInterface(); return $this->values[$ident]; }
     public function MaintainVariable($ident, $name, $type, $profile, $position, $keep) {
         $GLOBALS['maintainCalls'][] = [$ident, $type, $keep];
         $this->variableNames[$ident] = $name;
@@ -55,6 +61,8 @@ class IPSModule
     }
     public function GetIDForIdent($ident) { $GLOBALS['objects'][$ident] = $this; return $ident; }
     public function SetValue($ident, $value) {
+        if ($this->detachOnSetValue) $this->interfaceAvailable = false;
+        $this->requireInterface();
         if ($this->failSetValue) throw new RuntimeException("Variable update failed");
         if (!isset($this->types[$ident])) throw new RuntimeException("Unknown variable $ident");
         if (isset($this->types[$ident])) {

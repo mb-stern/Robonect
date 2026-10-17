@@ -84,7 +84,7 @@ class Fixture(http.server.BaseHTTPRequestHandler):
 env = os.environ.copy()
 env['NO_PROXY'] = '127.0.0.1'
 env['no_proxy'] = '127.0.0.1'
-for filename in ['update_error_list.php', 'runtime.php', 'timers.php', 'configuration.php']:
+for filename in ['update_error_list.php', 'runtime.php', 'timers.php', 'configuration.php', 'lifecycle.php']:
     result = subprocess.run([args.php, str(root / 'tests' / filename)], cwd=root, env=env)
     if result.returncode:
         raise SystemExit(result.returncode)
