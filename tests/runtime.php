@@ -213,4 +213,13 @@ test('Connection test only reads status and returns success or failure text',fun
     $m=freshModule();$m->responses['status']=awake();check(strpos($m->TestConnection(),'erfolgreich')!==false);eq($m->commands,['status']);
     $m->responses['status']=false;check(strpos($m->TestConnection(),'fehlgeschlagen')!==false);eq($m->commands,['status','status']);
 });
+test('Substatus numeric and plain MQTT reception works with retained and fragmented live packets',function(){
+    $m=freshModule();receive($m,publish('mower/mower/substatus','3',0,true).publish('mower/mower/substatus/plain','Lädt',0,true));
+    eq($m->values['mowerSubstatus'],3);eq($m->values['mowerSubstatusPlain'],'Lädt');
+    $calls=$m->setValueCalls;receive($m,publish('mower/mower/substatus','3',0,true).publish('mower/mower/substatus/plain','Lädt',0,true));eq($m->setValueCalls,$calls);
+    $packet=publish('mower/mower/substatus','4',1).publish('mower/mower/substatus/plain','Fährt zur Ladestation',1);
+    foreach(str_split($packet,5) as $fragment)receive($m,$fragment);
+    eq($m->values['mowerSubstatus'],4);eq($m->values['mowerSubstatusPlain'],'Fährt zur Ladestation');eq($m->values['mowerMqttStatus'],1);
+    $m->responses['status']=awake(17);$m->Update();eq($m->values['mowerSubstatus'],4);eq($m->values['mowerSubstatusPlain'],'Fährt zur Ladestation');
+});
 finishTests();

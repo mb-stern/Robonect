@@ -44,7 +44,8 @@
       "Refresh all values": "Alle Werte aktualisieren",
       "HTTP updates supplement MQTT. The interval controls background API requests. Automatic updates protect sleep; Refresh all values may wake the mower.": "HTTP-Updates ergänzen MQTT. Das Intervall bestimmt die regelmäßigen API-Abfragen. Im Hintergrund wird der Schlaf geschont; „Alle Werte aktualisieren“ kann den Mäher aufwecken.",
       "HTTP update interval": "HTTP-Abfrageintervall",
-      "New values start checked. Save checkbox changes with Symcon Apply Changes. Selected variables are created; unchecked variables are deleted. Re-enabling creates a new ID.": "Neue Werte sind vorausgewählt. Änderungen an den Checkboxen über Symcons „Änderungen übernehmen“ speichern. Dabei werden ausgewählte Variablen angelegt und abgewählte gelöscht. Erneutes Aktivieren vergibt eine neue ID."
+      "New values start checked. Save checkbox changes with Symcon Apply Changes. Selected variables are created; unchecked variables are deleted. Re-enabling creates a new ID.": "Neue Werte sind vorausgewählt. Änderungen an den Checkboxen über Symcons „Änderungen übernehmen“ speichern. Dabei werden ausgewählte Variablen angelegt und abgewählte gelöscht. Erneutes Aktivieren vergibt eine neue ID.",
+      "Data received means a value has been delivered at least once. Reception not recorded means the variable exists, but reception has not yet been recorded. Neither indicates freshness.": "„Daten empfangen“: Ein Wert wurde bereits geliefert. „Empfang nicht erfasst“: Die Variable existiert, aber ein Empfang wurde noch nicht erfasst. Beides ist keine Aussage zur Aktualität."
     }
   }
 }

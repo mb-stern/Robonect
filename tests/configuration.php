@@ -32,6 +32,26 @@ function applyNativeChecklist($m,$rows) {
     IPS_SetProperty($m->InstanceID,$list['name'],json_encode($saved));
     IPS_ApplyChanges($m->InstanceID);
 }
+// Symcon exposes named fields only inside the button's own scope (elements/actions).
+function formButtons($elements) {
+    $buttons=[];
+    foreach($elements as $element){
+        if(($element['type']??'')==='Button')$buttons[]=$element;
+        if(isset($element['items']))$buttons=array_merge($buttons,formButtons($element['items']));
+    }
+    return $buttons;
+}
+function runRefreshButton($m,$form,$displayed) {
+    foreach(['elements','actions'] as $scope)foreach(formButtons($form[$scope]??[]) as $button){
+        if($button['caption']!=='Refresh all values')continue;
+        $names=[];$walk=function($fields)use(&$walk,&$names){foreach($fields as $field){if(isset($field['name']))$names[]=$field['name'];if(isset($field['items']))$walk($field['items']);}};
+        $walk($form[$scope]);
+        $id=$m->InstanceID;
+        if(in_array('VariableVisibility',$names,true))$VariableVisibility=new ArrayIterator($displayed);
+        ob_start();try{eval(implode("\n",$button['onClick']));return ob_get_contents();}finally{ob_end_clean();}
+    }
+    throw new RuntimeException('Refresh button missing');
+}
 function mqttPublish($topic,$payload) {
     $body=pack('n',strlen($topic)).$topic.$payload; $length=strlen($body); $encoded='';
     do{$byte=$length%128;$length=intdiv($length,128);$encoded.=chr($byte|($length?128:0));}while($length);
@@ -159,7 +179,8 @@ test('Known alarms get descriptions and unknown extras explicitly retain their r
     $m=freshModule();
     $m->responses=['status'=>['successful'=>true,'status'=>['status'=>2,'home'=>0,'prevent'=>0],'clock'=>['date'=>'2026-10-17','time'=>'12:34:56']],'health'=>['successful'=>true,'health'=>['alarm'=>['voltage3v3intmin'=>false]]]];
     $m->Update();$rows=selectionRows($m);
-    foreach(['HTTP health: health.alarm.voltage3v3intmin'=>'Alarm: interne 3,3-V-Spannung zu niedrig','HTTP status: clock.date'=>'Gerätedatum','HTTP status: clock.time'=>'Geräteuhrzeit'] as $source=>$name) {
+    eq(rowByIdent($rows,'mowerHealthAlarms')['Name'],'Gerätealarme');
+    foreach(['HTTP status: clock.date'=>'Gerätedatum','HTTP status: clock.time'=>'Geräteuhrzeit'] as $source=>$name) {
         $row=rowByIdent($rows,'extra_'.substr(sha1($source),0,20));eq($row['Name'],$name);check(strpos($row['Description'],$source)!==false);
     }
     $m->ReceiveData(mqttPublish('mower/custom/unknown','text'));
@@ -169,16 +190,15 @@ test('Known alarms get descriptions and unknown extras explicitly retain their r
 });
 test('Form reports installed build and all manual requests have a visible response', function () {
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
-    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.7')!==false);
-    foreach($form['actions'] as $button){$script=is_array($button['onClick'])?implode("\n",$button['onClick']):$button['onClick'];check(strpos($script,'echo ')!==false);}
+    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.8')!==false);
+    foreach(formButtons($form['elements']) as $button){$script=is_array($button['onClick'])?implode("\n",$button['onClick']):$button['onClick'];check(strpos($script,'echo ')!==false);}
 });
 test('Full refresh updates the open checklist and preserves unsaved choices without creating variables',function(){
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
     $displayed=selectionRows($m);foreach($displayed as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
     $before=$m->properties['VariableVisibility'];$calls=$GLOBALS['maintainCalls'];
     $m->responses=['status'=>['successful'=>true,'status'=>['status'=>17,'distance'=>42]],'gps'=>['successful'=>true,'gps'=>['satellites'=>11]],'error'=>['successful'=>true,'errors'=>[]]];
-    $id=$m->InstanceID;$VariableVisibility=new ArrayIterator($displayed);
-    ob_start();try{eval(implode("\n",$form['actions'][0]['onClick']));$message=ob_get_contents();}finally{ob_end_clean();}
+    $message=runRefreshButton($m,$form,$displayed);
     check(strpos($message,'Manuelle Gesamtaktualisierung beendet')!==false);
     $last=end($m->formUpdates);eq($last[0],'VariableVisibility');$rows=json_decode($last[2],true);
     eq(rowByIdent($rows,'mowerHours')['Visible'],false);
@@ -187,5 +207,72 @@ test('Full refresh updates the open checklist and preserves unsaved choices with
     eq(rowByIdent($rows,'mowerGpsSatellites')['Visible'],true);
     eq($m->properties['VariableVisibility'],$before);eq($GLOBALS['maintainCalls'],$calls);eq(count($m->types),35);
     $m->ApplyChanges();eq(count($m->types),35);
+});
+function seedLegacyAlarms($m,$enabled=true) {
+    $discovered=[];$available=[];$rows=selectionRows($m);$ids=[];
+    foreach(['voltage3v3intmin','voltage3v3intmax','voltage3v3extmin','voltage3v3extmax','voltagebattmin','voltagebattmax','temperaturemin','temperaturemax','humiditymax'] as $key){
+        $source='HTTP health: health.alarm.'.$key;$id='extra_'.substr(sha1($source),0,20);$ids[]=$id;
+        $discovered[$id]=['name'=>$source,'value'=>$key==='temperaturemax'?'true':'false'];$available[$id]=true;
+        $rows[]=['Ident'=>$id,'Visible'=>$enabled];
+        if($enabled){$m->RegisterVariableString($id,$key,'',200);$m->values[$id]=$discovered[$id]['value'];}
+    }
+    $m->attributes['DiscoveredValues']=json_encode($discovered);$m->attributes['AvailableValues']=json_encode($available);
+    $m->properties['VariableVisibility']=json_encode($rows);
+    return $ids;
+}
+test('HTTP alarms offer one aggregate without creating objects on reception or restart',function(){
+    $m=freshModule();$m->responses=['status'=>['successful'=>true,'status'=>['status'=>2]],'health'=>['successful'=>true,'health'=>['alarm'=>['temperaturemax'=>true,'voltagebattmin'=>true,'humiditymax'=>false]]]];
+    $m->Update();$rows=selectionRows($m);eq(count($rows),36);eq(rowByIdent($rows,'mowerHealthAlarms')['Visible'],true);eq(count($m->types),35);
+    $m->ApplyChanges();eq(count($m->types),35);
+    applyNativeChecklist($m,nativeChecklistRows($m));eq(count($m->types),36);
+    eq($m->values['mowerHealthAlarms'],'Temperatur zu hoch; Akkuspannung zu niedrig');
+    $calls=$m->setValueCalls;$m->Update();eq($m->setValueCalls,$calls);
+});
+test('MQTT partial alarm updates preserve other flags and clear the final active alarm',function(){
+    $m=freshModule();$m->ReceiveData(mqttPublish('mower/health/alarm/temperaturemax','true'));
+    applyNativeChecklist($m,nativeChecklistRows($m));eq($m->values['mowerHealthAlarms'],'Temperatur zu hoch');
+    $m->ReceiveData(mqttPublish('mower/health/alarm/humiditymax','1'));eq($m->values['mowerHealthAlarms'],'Luftfeuchtigkeit zu hoch; Temperatur zu hoch');
+    $m->ReceiveData(mqttPublish('mower/health/alarm/temperaturemax','false'));eq($m->values['mowerHealthAlarms'],'Luftfeuchtigkeit zu hoch');
+    $m->ReceiveData(mqttPublish('mower/health/alarm/humiditymax','0'));eq($m->values['mowerHealthAlarms'],'Keine aktiven Gerätealarme');
+    $before=$m->setValueCalls;$states=$m->attributes['HealthAlarmStates'];
+    $m->ReceiveData(mqttPublish('mower/health/alarm/humiditymax','false'));
+    $m->ReceiveData(mqttPublish('mower/health/alarm/humiditymax','nonsense'));
+    eq($m->setValueCalls,$before);eq($m->attributes['HealthAlarmStates'],$states);eq($m->commands,[]);
+});
+test('Unknown alarm keys remain visible in aggregate and unchecked aggregate stays deleted',function(){
+    $m=freshModule();$m->ReceiveData(mqttPublish('mower/health/alarm/new_sensor','true'));applyNativeChecklist($m,nativeChecklistRows($m));
+    eq($m->values['mowerHealthAlarms'],'Zusätzlicher Gerätealarm: new_sensor');
+    choose($m,'mowerHealthAlarms',false);$m->ApplyChanges();
+    $m->ReceiveData(mqttPublish('mower/health/alarm/temperaturemax','true'));$m->ApplyChanges();
+    check(!isset($m->types['mowerHealthAlarms']));eq(rowByIdent(selectionRows($m),'mowerHealthAlarms')['Visible'],false);
+});
+test('Approved nine legacy alarm objects consolidate through SDK without changing core objects',function(){
+    $m=freshModule();$core=array_keys($m->types);$ids=seedLegacyAlarms($m);$saved=$m->properties['VariableVisibility'];
+    $m->ApplyChanges();eq(count($m->types),36);eq($m->values['mowerHealthAlarms'],'Temperatur zu hoch');
+    foreach($core as $id)check(isset($m->types[$id]));
+    foreach($ids as $id){check(!isset($m->types[$id]));check(in_array([$id,3,false],$GLOBALS['maintainCalls'],true));}
+    eq($m->properties['VariableVisibility'],$saved);eq(count(nativeChecklistRows($m)),36);
+    $form=json_decode($m->GetConfigurationForm(),true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration'],false);
+    $rows=nativeChecklistRows($m);foreach($rows as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
+    applyNativeChecklist($m,$rows);check(!isset($m->types['mowerHours']));eq(count($m->types),35);
+    $form=json_decode($m->GetConfigurationForm(),true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration']??true,true);
+    $m->ApplyChanges();eq(count($m->types),35);eq($m->values['mowerHealthAlarms'],'Temperatur zu hoch');
+});
+test('Disabled legacy alarm choices migrate disabled and explicit aggregate choice wins',function(){
+    $m=freshModule();seedLegacyAlarms($m,false);$m->ApplyChanges();
+    check(!isset($m->types['mowerHealthAlarms']));eq(rowByIdent(nativeChecklistRows($m),'mowerHealthAlarms')['Visible'],false);
+    $m=freshModule();$ids=seedLegacyAlarms($m,true);$rows=json_decode($m->properties['VariableVisibility'],true);$rows[]=['Ident'=>'mowerHealthAlarms','Visible'=>false];$m->properties['VariableVisibility']=json_encode($rows);
+    $m->ApplyChanges();check(!isset($m->types['mowerHealthAlarms']));foreach($ids as $id)check(!isset($m->types[$id]));
+});
+test('Legacy alarm consolidation protects user children before any SDK variable deletions',function(){
+    $m=freshModule();$ids=seedLegacyAlarms($m);$GLOBALS['eventParents'][200]=$ids[2];choose($m,'mowerHours',false);$before=$GLOBALS['maintainCalls'];
+    try{$m->ApplyChanges();throw new LogicException('Deletion should fail');}catch(RuntimeException $e){check(strpos($e->getMessage(),'child objects')!==false);}
+    eq($GLOBALS['maintainCalls'],$before);foreach($ids as $id)check(isset($m->types[$id]));check(isset($m->types['mowerHours']));
+});
+test('Data column distinguishes existence from a recorded receipt even for an unchanged zero',function(){
+    $m=freshModule();eq(rowByIdent(selectionRows($m),'mowerSubstatus')['Data'],'Empfang nicht erfasst');
+    $m->ReceiveData(mqttPublish('mower/mower/substatus','0'));
+    eq(rowByIdent(selectionRows($m),'mowerSubstatus')['Data'],'Daten empfangen');
+    eq($m->values['mowerSubstatus'],0);check(!in_array(['mowerSubstatus',0],$m->setValueCalls,true));
 });
 finishTests();

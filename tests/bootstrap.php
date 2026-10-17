@@ -11,7 +11,7 @@ class IPSModule
 {
     public $InstanceID = 57958;
     public $properties = ['IPAddress' => '127.0.0.1', 'Username' => 'test', 'Password' => ' secret ', 'MQTTTopic' => 'mower', 'DebugLog' => false, 'HTTPUpdateTimer' => true, 'UpdateTimer' => 10, 'MowingTime' => 180, 'VariableVisibility' => '[]'];
-    public $attributes = ['AvailableValues' => '{}', 'DiscoveredValues' => '{}', 'CapabilityAddress' => '127.0.0.1', 'UnsupportedCommands' => '{}'];
+    public $attributes = ['AvailableValues' => '{}', 'DiscoveredValues' => '{}', 'CapabilityAddress' => '127.0.0.1', 'UnsupportedCommands' => '{}', 'HealthAlarmStates' => '{}'];
     public $values = ['manualAction' => -1];
     public $types = [];
     public $buffers = [];

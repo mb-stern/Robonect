@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.7';
+    private const MODULE_BUILD = '2026-10-17.8';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     /**
@@ -37,6 +37,7 @@ class RobonectWifiModul extends IPSModule
         $this->RegisterAttributeString("DiscoveredValues", "{}");
         $this->RegisterAttributeString("CapabilityAddress", "");
         $this->RegisterAttributeString("UnsupportedCommands", "{}");
+        $this->RegisterAttributeString('HealthAlarmStates', '{}');
 
         // Timer
         $this->RegisterTimer("ROBONECT_UpdateTimer", 0, 'ROBONECT_Update($_IPS[\'TARGET\']);');
@@ -55,13 +56,17 @@ class RobonectWifiModul extends IPSModule
         $address = trim($this->ReadPropertyString('IPAddress'));
         if ($this->ReadAttributeString('CapabilityAddress') !== $address) {
             $this->WriteAttributeString('AvailableValues', '{}');
+            $this->WriteAttributeString('HealthAlarmStates', '{}');
             $this->WriteAttributeString('CapabilityAddress', $address);
         }
 
         // Generate Profiles & Variables
+        $this->importLegacyHealthAlarms();
+        $this->preflightLegacyHealthAlarms();
         $this->registerProfiles();
         $this->registerVariables();
         $this->registerAdditionalValues();
+        $this->removeLegacyHealthAlarms();
         $this->applyVariableVisibility();
         $this->refreshCachedErrorHistory();
 
@@ -859,6 +864,10 @@ class RobonectWifiModul extends IPSModule
 
     protected function receiveMQTTValue(string $topic, string $payload, bool $retained)
     {
+        if (strpos($topic, '/health/alarm/') === 0 && strlen($topic) > strlen('/health/alarm/')) {
+            if ($this->updateHealthAlarms([substr($topic, strlen('/health/alarm/')) => $payload]) && !$retained) $this->updateIdent('mowerMqttStatus', 'online');
+            return;
+        }
         $topics = [
             '/mower/status' => 'mowerStatus',
             '/mower/error/code' => 'mowerErrorCode',
@@ -1019,8 +1028,8 @@ class RobonectWifiModul extends IPSModule
             'mowerMode' => ['name' => 'Modus', 'group' => 'Status', 'type' => 1, 'profile' => 'ROBONECT_Modus', 'position' => 30],
             'mowerStatus' => ['name' => 'Status', 'group' => 'Status', 'type' => 1, 'profile' => 'ROBONECT_Status', 'position' => 31],
             'mowerStatusPlain' => ['name' => 'Status (Klartext)', 'group' => 'Status', 'type' => 3, 'profile' => '', 'position' => 32],
-            'mowerSubstatus' => ['name' => 'Substatus', 'group' => 'Status', 'type' => 1, 'profile' => '', 'position' => 33],
-            'mowerSubstatusPlain' => ['name' => 'Substatus (Klartext)', 'group' => 'Status', 'type' => 3, 'profile' => '', 'position' => 34],
+            'mowerSubstatus' => ['name' => 'Substatus', 'description' => 'Nur über MQTT: <MQTT-Topic>/mower/substatus. Eine HTTP-Gesamtaktualisierung liefert diesen Wert nicht.', 'group' => 'Status', 'type' => 1, 'profile' => '', 'position' => 33],
+            'mowerSubstatusPlain' => ['name' => 'Substatus (Klartext)', 'description' => 'Nur über MQTT: <MQTT-Topic>/mower/substatus/plain. Eine HTTP-Gesamtaktualisierung liefert diesen Wert nicht.', 'group' => 'Status', 'type' => 3, 'profile' => '', 'position' => 34],
             'mowerStopped' => ['name' => 'man. angehalten', 'group' => 'Status', 'type' => 0, 'profile' => 'ROBONECT_JaNein', 'position' => 35],
             'mowerStatusSince' => ['name' => 'Status seit', 'group' => 'Status', 'type' => 1, 'profile' => '~UnixTimestamp', 'position' => 36],
             'statusSinceDescriptive' => ['name' => 'Status seit', 'group' => 'Status', 'type' => 3, 'profile' => '', 'position' => 37],
@@ -1051,6 +1060,7 @@ class RobonectWifiModul extends IPSModule
             'mowerErrorMessage' => ['name' => 'Aktueller Fehler', 'group' => 'Fehler', 'extra' => true, 'type' => 'string'],
             'mowerGpsSatellites' => ['name' => 'GPS Satelliten', 'group' => 'GPS', 'extra' => true, 'type' => 'integer'],
             'mowerGpsReceivedAt' => ['name' => 'GPS-Position zuletzt geändert', 'group' => 'GPS', 'extra' => true, 'type' => 'integer'],
+            'mowerHealthAlarms' => ['name' => 'Gerätealarme', 'description' => 'Alle aktiven Spannungs-, Temperatur- und Feuchtigkeitsalarme als Klartext.', 'group' => 'Fehler', 'extra' => true, 'type' => 'string'],
         ];
     }
 
@@ -1063,6 +1073,16 @@ class RobonectWifiModul extends IPSModule
                 $element['items'][1]['values'] = $rows;
                 // Use the native List property loading/saving. Ident and Visible
                 // are persisted columns; metadata comes from these dynamic rows.
+                // During the one-time alarm merge, old saved row indexes no longer
+                // match. Supply canonical rows until the next normal native save.
+                $saved = json_decode($this->ReadPropertyString('VariableVisibility'), true) ?: [];
+                $legacy = $this->legacyHealthAlarmIdents();
+                foreach ($saved as $row) {
+                    if (is_array($row) && isset($row['Ident'], $legacy[$row['Ident']]) && version_compare(IPS_GetKernelVersion(), '6.0', '>=')) {
+                        $element['items'][1]['loadValuesFromConfiguration'] = false;
+                        break;
+                    }
+                }
             }
             if (($element['name'] ?? '') === 'ModuleInformation') $element['items'][0]['caption'] = 'Teststand: ' . self::MODULE_BUILD;
         }
@@ -1099,6 +1119,98 @@ class RobonectWifiModul extends IPSModule
         return ['name' => $metadata[0], 'description' => $metadata[1] . ' Quelle: ' . $source, 'group' => 'Zusatzwerte', 'extra' => true, 'type' => 'string'];
     }
 
+    protected function healthAlarmLabels()
+    {
+        return [
+            'voltage3v3intmin' => 'Interne 3,3-V-Spannung zu niedrig',
+            'voltage3v3intmax' => 'Interne 3,3-V-Spannung zu hoch',
+            'voltage3v3extmin' => 'Externe 3,3-V-Spannung zu niedrig',
+            'voltage3v3extmax' => 'Externe 3,3-V-Spannung zu hoch',
+            'voltagebattmin' => 'Akkuspannung zu niedrig',
+            'voltagebattmax' => 'Akkuspannung zu hoch',
+            'temperaturemin' => 'Temperatur zu niedrig',
+            'temperaturemax' => 'Temperatur zu hoch',
+            'humiditymax' => 'Luftfeuchtigkeit zu hoch',
+        ];
+    }
+
+    protected function healthAlarmSourceKey(string $source)
+    {
+        foreach (['HTTP health: health.alarm.', 'MQTT /health/alarm/'] as $prefix) {
+            if (strpos($source, $prefix) === 0 && strlen($source) > strlen($prefix)) return substr($source, strlen($prefix));
+        }
+        return null;
+    }
+
+    protected function updateHealthAlarms(array $fields)
+    {
+        $states = json_decode($this->ReadAttributeString('HealthAlarmStates'), true) ?: [];
+        $discovered = json_decode($this->ReadAttributeString('DiscoveredValues'), true) ?: [];
+        $received = false;
+        foreach ($fields as $key => $value) {
+            if (!is_string($key) || !is_scalar($value) || $value === '') continue;
+            $active = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($active === null) continue;
+            $states[strtolower($key)] = $active;
+            // Preserve already configured legacy single-alarm objects, without
+            // offering or creating new single-alarm variables.
+            foreach (['HTTP health: health.alarm.' . $key, 'MQTT /health/alarm/' . $key] as $source) {
+                $ident = 'extra_' . substr(sha1($source), 0, 20);
+                if (isset($discovered[$ident]) || $this->variableExists($ident)) {
+                    $text = is_string($value) ? $value : json_encode($value);
+                    $this->recordDiscovered($ident, $source, $text);
+                    if ($this->variableExists($ident)) $this->setValueIfChanged($ident, $text);
+                }
+            }
+            $received = true;
+        }
+        if (!$received) return false;
+        ksort($states, SORT_STRING);
+        $encoded = json_encode($states);
+        if ($this->ReadAttributeString('HealthAlarmStates') !== $encoded) $this->WriteAttributeString('HealthAlarmStates', $encoded);
+        $labels = $this->healthAlarmLabels();
+        $active = [];
+        foreach ($states as $key => $value) if ($value) $active[] = $labels[$key] ?? ('Zusätzlicher Gerätealarm: ' . $key);
+        $this->writeMeasurement('mowerHealthAlarms', $active === [] ? 'Keine aktiven Gerätealarme' : implode('; ', $active));
+        return true;
+    }
+
+    protected function importLegacyHealthAlarms()
+    {
+        if ((json_decode($this->ReadAttributeString('HealthAlarmStates'), true) ?: []) !== []) return;
+        $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
+        $discovered = json_decode($this->ReadAttributeString('DiscoveredValues'), true) ?: [];
+        $fields = [];
+        foreach ($discovered as $ident => $item) {
+            $key = $this->healthAlarmSourceKey($item['name']);
+            if (isset($available[$ident]) && $key !== null) $fields[$key] = $item['value'];
+        }
+        $this->updateHealthAlarms($fields);
+    }
+
+    protected function legacyHealthAlarmIdents()
+    {
+        $discovered = json_decode($this->ReadAttributeString('DiscoveredValues'), true) ?: [];
+        $idents = [];
+        foreach ($discovered as $ident => $item) if ($this->healthAlarmSourceKey($item['name']) !== null) $idents[$ident] = true;
+        return $idents;
+    }
+
+    protected function preflightLegacyHealthAlarms()
+    {
+        foreach ($this->legacyHealthAlarmIdents() as $ident => $_) {
+            $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
+            if ($id !== false && IPS_GetChildrenIDs($id) !== []) throw new RuntimeException('Variable ' . $ident . ' has child objects and cannot be consolidated.');
+        }
+    }
+
+    protected function removeLegacyHealthAlarms()
+    {
+        foreach ($this->legacyHealthAlarmIdents() as $ident => $_) {
+            if ($this->variableExists($ident)) $this->MaintainVariable($ident, '', 3, '', 0, false);
+        }
+    }
+
     protected function visibilityChoices()
     {
         $rows = json_decode($this->ReadPropertyString('VariableVisibility'), true);
@@ -1109,6 +1221,15 @@ class RobonectWifiModul extends IPSModule
                 $choices[$row['Ident']] = $row['Visible'];
             }
         }
+        $legacyChoices = [];
+        foreach ($this->legacyHealthAlarmIdents() as $ident => $_) {
+            if (array_key_exists($ident, $choices)) $legacyChoices[] = $choices[$ident];
+            elseif ($this->variableExists($ident)) $legacyChoices[] = $this->selectedVisibility($ident, []);
+            unset($choices[$ident]);
+        }
+        // Existing approved alarm selections authorize the equivalent aggregate.
+        // An explicit selection for the new checkbox always wins.
+        if (!array_key_exists('mowerHealthAlarms', $choices) && $legacyChoices !== []) $choices['mowerHealthAlarms'] = in_array(true, $legacyChoices, true);
         return $choices;
     }
 
@@ -1133,6 +1254,7 @@ class RobonectWifiModul extends IPSModule
         $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
         $choices = $this->visibilityChoices();
         foreach ($discovered as $ident => $item) {
+            if ($this->healthAlarmSourceKey($item['name']) !== null) continue;
             if (!isset($definitions[$ident])) $definitions[$ident] = $this->additionalValueDefinition($item['name']);
         }
         $rows = [];
@@ -1149,7 +1271,7 @@ class RobonectWifiModul extends IPSModule
                 'Group' => $definition['group'],
                 'Visible' => $this->selectedVisibility($ident, $choices),
                 'Variable' => $this->variableExists($ident) ? 'Angelegt' : 'Nicht angelegt',
-                'Data' => isset($available[$ident]) ? 'Daten empfangen' : ($this->variableExists($ident) ? 'Vorhanden' : 'Noch keine Daten')
+                'Data' => isset($available[$ident]) ? 'Daten empfangen' : ($this->variableExists($ident) ? 'Empfang nicht erfasst' : 'Noch keine Daten')
             ];
         }
         return $rows;
@@ -1163,6 +1285,7 @@ class RobonectWifiModul extends IPSModule
         $position = 200;
         $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
         foreach ($discovered as $ident => $item) {
+            if ($this->healthAlarmSourceKey($item['name']) !== null) continue;
             if (!isset($definitions[$ident])) $definitions[$ident] = $this->additionalValueDefinition($item['name']);
         }
         foreach ($definitions as $ident => $definition) {
@@ -1254,6 +1377,10 @@ class RobonectWifiModul extends IPSModule
             'gps' => ['gps.latitude', 'gps.longitude', 'gps.satellites']
         ];
         $walk = function ($node, $path) use (&$walk, $command, $mapped) {
+            if ($command === 'health' && $path === 'health.alarm' && is_array($node)) {
+                $this->updateHealthAlarms($node);
+                return;
+            }
             if (is_array($node)) {
                 foreach ($node as $key => $value) {
                     // Do not turn history/list indexes or credential-like fields into variables.

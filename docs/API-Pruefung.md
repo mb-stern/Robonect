@@ -19,7 +19,7 @@ Zusätzlich zu den bekannten Variablen können bisher nicht zugeordnete skalare 
 
 ## Sichtbarkeit und MQTT-/HTTP-Abdeckung
 
-Die 35 bisherigen Definitionen stehen immer in der Checkliste. Die vier bekannten Zusatzdefinitionen werden derzeit erst nach gültigem Datenempfang, bei vorhandenem Objekt oder bei gespeicherter Auswahl gezeigt. Weitere Rohwerte erscheinen nach ihrer Erkennung über MQTT beziehungsweise die unterstützten HTTP-Antworten. Fehlende Einträge beweisen daher weder fehlende Geräteunterstützung noch das Ausbleiben sämtlicher Daten. Für noch nicht angebundene Datenbereiche wie `battery`, `hour`, `motor` und `wire` gibt es noch keinen vollständigen Variablenkatalog.
+Die 35 bisherigen Definitionen stehen immer in der Checkliste. Die fünf bekannten Zusatzdefinitionen werden derzeit erst nach gültigem Datenempfang, bei vorhandenem Objekt oder bei gespeicherter Auswahl gezeigt. Weitere Rohwerte erscheinen nach ihrer Erkennung über MQTT beziehungsweise die unterstützten HTTP-Antworten. Fehlende Einträge beweisen daher weder fehlende Geräteunterstützung noch das Ausbleiben sämtlicher Daten. Für noch nicht angebundene Datenbereiche wie `battery`, `hour`, `motor` und `wire` gibt es noch keinen vollständigen Variablenkatalog.
 
 Ein bestätigtes Anzeigeproblem wurde behoben: „Alle Werte aktualisieren“ füllt jetzt auch die bereits geöffnete Checkliste mit neu erkannten Feldern. Der Knopf übergibt die momentan angezeigten Haken; sie werden beim Zusammenführen anhand des Idents erhalten. Dadurch gehen noch nicht gespeicherte Änderungen nicht verloren. Die Aktualisierung speichert keine Auswahl und legt keine Variablen an. Neue MQTT-Felder ohne manuellen Abruf werden beim nächsten Öffnen berücksichtigt.
 
@@ -29,7 +29,8 @@ MQTT und HTTP ergänzen sich im aktuellen Modul:
 | --- | --- |
 | Mäherstatus, Modus, Akkustand, Spannungen, Klima, Messerwerte, GPS, aktueller Fehler, nächster Timerstart | Über entsprechende MQTT-Topics, soweit vom Gerät gesendet; viele dieser Werte zusätzlich über HTTP. |
 | Status-/Substatus-Klartext und MQTT-Verbindungsstatus | Im Modul über MQTT bzw. daraus abgeleitet. |
-| Name, Seriennummer, Geräteuhr und zusätzliche Health-Alarmfelder | Im Modul aus den HTTP-Antworten. Unbekannte MQTT-Topics werden als eigene Rohwerte angeboten, nicht automatisch diesen Feldern zugeordnet. |
+| Name, Seriennummer und Geräteuhr | Im Modul aus den HTTP-Antworten. |
+| Zusammengefasste Gerätealarme | `health.alarm` aus HTTP und einzelne MQTT-Topics `/health/alarm/<Schlüssel>` aktualisieren dieselbe Zusammenfassung. |
 | Hintergrundintervall | Fragt `status` ab; bei wach gemeldetem Mäher zusätzlich `health` und bei fehlenden frischen MQTT-Koordinaten `gps`. Keine Fehlerhistorie. |
 | Vollständige Fehlerhistorie und Fehlerzähler | Über `error`, manuell über „Alle Werte aktualisieren“ oder die vorhandene Skriptfunktion. |
 
@@ -41,11 +42,21 @@ Im Formular steht nur noch „Alle Werte aktualisieren“ mit sichtbarer Rückme
 
 Die Gesamtaktualisierung legt keine neuen Variablen an und überträgt keine Steuerbefehle oder Wochenpläne. „Alle Werte“ bezieht sich auf die bereits unterstützten Istwerte, nicht auf sämtliche zusätzlichen API-Kommandos wie `battery`, `motor` oder `hour`.
 
-Die Checkboxen werden ausschließlich über Symcons normales **„Änderungen übernehmen“** gespeichert. Die Liste nutzt die reguläre Eigenschaftsanbindung mit dem Standard `loadValuesFromConfiguration: true`. Nur die Spalten `Ident` und `Visible` werden gespeichert; Namen, Beschreibungen und Daten-/Anlagenstatus werden dynamisch ergänzt. Die Reihenfolge der gespeicherten Zeilen bleibt erhalten, damit Symcons Zusammenführen nach Zeilenindex keine Haken anderen Idents zuordnet. Es gibt keinen zusätzlichen Übernehmen-Knopf, keine eigene Speicherfunktion und keine sofortige Anlage beim Umschalten. Nach dem regulären Speichern übernimmt `ApplyChanges()` Anlage/Löschung über die SDK-Methoden und aktualisiert die Spalte **„Variable“**. Abbrechen, bloßer Empfang und ein Neustart ohne gespeicherte neue Auswahl legen keine Zusatzvariablen an.
+Die Checkboxen werden ausschließlich über Symcons normales **„Änderungen übernehmen“** gespeichert. Die Liste nutzt die reguläre Eigenschaftsanbindung mit dem Standard `loadValuesFromConfiguration: true`. Nur während der Alarmumstellung liefert das Backend bis zum nächsten normalen Speichern die zusammengeführten Zeilen mit `loadValuesFromConfiguration: false`, damit alte Zeilenindizes keine anderen Checkboxen überschreiben. Nur die Spalten `Ident` und `Visible` werden gespeichert; Namen, Beschreibungen und Daten-/Anlagenstatus werden dynamisch ergänzt. Die Reihenfolge der gespeicherten Zeilen bleibt erhalten, damit Symcons Zusammenführen nach Zeilenindex keine Haken anderen Idents zuordnet. Es gibt keinen zusätzlichen Übernehmen-Knopf, keine eigene Speicherfunktion und keine sofortige Anlage beim Umschalten. Nach dem regulären Speichern übernimmt `ApplyChanges()` Anlage/Löschung über die SDK-Methoden und aktualisiert die Spalte **„Variable“**. Abbrechen, bloßer Empfang und ein Neustart ohne gespeicherte neue Auswahl legen keine Zusatzvariablen an.
 
-Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Bereits verwendete Idents und Datentypen bleiben erhalten.
+Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Idents und Datentypen bleiben erhalten, mit Ausnahme der ausdrücklich gewünschten Zusammenfassung bisheriger Einzelalarme.
 
-Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.7**; Bibliotheks-Build 7 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend Checkboxänderungen über den normalen Symcon-Dialog übernehmen.
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.8**; Bibliotheks-Build 8 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend Checkboxänderungen über den normalen Symcon-Dialog übernehmen.
+
+Der Aktualisierungsknopf steht jetzt im Bereich „Aktualisierung und Vorgabewerte“ innerhalb von `elements`, wie die Checkliste. Die Symcon-Dokumentation begrenzt Formularvariablen ausdrücklich auf denselben Scope (`elements` oder `actions`). Der bisherige Knopf unter `actions` konnte deshalb `$VariableVisibility` nicht lesen. Der Test berücksichtigt nun diese Grenze, behandelt PHP-Warnungen als Fehler und prüft, dass ungespeicherte Haken erhalten bleiben. Die native Oberfläche wird damit nicht vollständig nachgebildet; der Formularaufruf muss zusätzlich in Symcon bestätigt werden.
+
+„Daten empfangen“ bedeutet mindestens einen erfassten Wert, auch wenn dieser dem bestehenden Wert entspricht. Das bisherige „Vorhanden“ heißt jetzt **„Empfang nicht erfasst“**: Das Objekt existiert, aber der Empfang ist nicht vermerkt. Beide Zustände geben kein Alter des Wertes an. Substatus und Klartext haben nun Beschreibungen mit ihren MQTT-Topics; eine HTTP-Gesamtaktualisierung liefert diese beiden Werte derzeit nicht. Tests decken gespeicherte und laufende MQTT-Meldungen sowie fragmentierte Pakete und unveränderte Werte ab. Der tatsächliche Versand durch den Automower 310 ist ohne Brokerdaten weiterhin offen.
+
+## Zusammengefasste Gerätealarme
+
+Die zuvor einzeln angebotenen Spannungs-, Temperatur- und Feuchtigkeitsalarme erscheinen jetzt als eine optionale Stringvariable **„Gerätealarme“** (`mowerHealthAlarms`). Sie enthält die deutschen Beschreibungen aller aktiven Alarme, mit Semikolon getrennt, oder „Keine aktiven Gerätealarme“. Unbekannte Alarm-Schlüssel bleiben mit ihrem technischen Namen sichtbar. Fehlende oder ungültige Felder löschen keine bekannten Zustände. Einzelne MQTT-Alarmmeldungen ändern jeweils nur den betreffenden Zustand; HTTP und MQTT verwenden denselben gespeicherten Zustandsvorrat. Dafür entstehen keine zusätzlichen Abfragen.
+
+Neue Daten allein erzeugen kein Objekt. Bei der gewünschten Umstellung bereits freigegebener Einzelalarme wird die Zusammenfassung beim Übernehmen über `$this->MaintainVariable(..., true)` angelegt und die alten Einzelvariablen mit `false` entfernt. Sind alle alten Alarme abgewählt, bleibt auch die Zusammenfassung abgewählt. Eine explizite Auswahl für die neue Variable hat Vorrang. Andere Variablen behalten ihre Idents und Objekte. Eigene Unterobjekte werden vor jeder Löschung geprüft und blockieren die Umstellung; sie werden nicht entfernt. Das eigentliche Geräte-Fehlerprotokoll bleibt eine separate Anzeige.
 
 ## Korrigierte Fehler
 
@@ -125,7 +136,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **184 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **192 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php
@@ -148,4 +159,4 @@ Geprüft am 17.10.2026; das Forum ist keine vollständige V1.6-Spezifikation.
 - [Fehler und Reset](https://forum.robonect.de/viewtopic.php?t=110), [Mäher-Fehlercodes (unvollständige Liste)](https://forum.robonect.de/viewtopic.php?t=930), [Schlafverhalten](https://forum.robonect.de/viewtopic.php?t=3831), [MQTT](https://forum.robonect.de/viewtopic.php?t=1740)
 - [Home Assistant](https://github.com/geertmeersman/robonect), [aiorobonect](https://github.com/geertmeersman/aiorobonect)
 - [Symcon ReceiveData](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/module/receivedata.md), [Semaphoren](https://www.symcon.de/de/llms/functions/process-control.md)
-- [MaintainVariable](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/module/maintainvariable.md), [UnregisterVariable](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/module/unregistervariable.md), [List](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/configuration-forms/list.md), [ExpansionPanel](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/configuration-forms/expansionpanel.md)
+- [MaintainVariable](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/module/maintainvariable.md), [UnregisterVariable](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/module/unregistervariable.md), [List](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/configuration-forms/list.md), [ExpansionPanel](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/configuration-forms/expansionpanel.md), [Button und Scope der Formularvariablen](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/configuration-forms/button.md)
