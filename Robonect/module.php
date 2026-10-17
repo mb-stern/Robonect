@@ -186,52 +186,54 @@ class RobonectWifiModul extends IPSModule
             return false;
         };
 
-        $data = $this->executeHTTPCommand('error');
-        if (!isset($data) or !isset($data['errors']) or !isset($data['successful']) or ($data['successful'] != true)) {
-            return false;
+        try {
+            $data = $this->executeHTTPCommand('error');
+            if (!isset($data) or !isset($data['errors']) or !isset($data['successful']) or ($data['successful'] != true)) {
+                return false;
+            }
+
+            if (count($data['errors']) == 0) {
+                return true;
+            }
+
+            $errorCount = count($data['errors']);
+            $this->SetValue("mowerErrorCount", $errorCount);
+
+            $errorListHTML = '<table>';
+            $errorListHTML = $errorListHTML . '<colgroup>';
+            $errorListHTML = $errorListHTML . '</colgroup>';
+            $errorListHTML = $errorListHTML . '<thead><tr>';
+            $errorListHTML = $errorListHTML . '<th></th>';
+            $errorListHTML = $errorListHTML . '</thead>ID</tr>';
+            $errorListHTML = $errorListHTML . '</thead>Datum</tr>';
+            $errorListHTML = $errorListHTML . '</thead>Uhrzeit</tr>';
+            $errorListHTML = $errorListHTML . '</thead>Fehlercode</tr>';
+            $errorListHTML = $errorListHTML . '</thead>Beschreibung</tr>';
+            $errorListHTML = $errorListHTML . '<tbody>';
+
+            for ($x = 0; $x < $errorCount; $x++) {
+                $error = $data['errors'][$x];
+                $colorCode = '#555555';
+                if (($x % 2) != 0) $colorCode = '#333333';
+                $errorListHTML = $errorListHTML . '<tr style="background-color:"' . $colorCode . '>';
+
+                $index = $x + 1;
+                $errorListHTML = $errorListHTML . '<td>' . $index . '</td>';
+                $errorListHTML = $errorListHTML . '<td>' . $error['date'] . '</td>';
+                $errorListHTML = $errorListHTML . '<td>' . $error['time'] . '</td>';
+                $errorListHTML = $errorListHTML . '<td>' . $error['error_code'] . '</td>';
+                $errorListHTML = $errorListHTML . '<td>' . $error['error_message'] . '</td>';
+
+                $errorListHTML = $errorListHTML . '</tr>';
+            }
+
+            $errorListHTML = $errorListHTML . '</tbody>';
+            $errorListHTML = $errorListHTML . '</table>';
+
+            $this->SetValue("mowerErrorList", $errorListHTML);
+        } finally {
+            IPS_SemaphoreLeave($semaphore);
         }
-
-        if (count($data['errors']) == 0) {
-            return true;
-        }
-
-        $errorCount = count($data['errors']);
-        $this->SetValue("mowerErrorCount", $errorCount);
-
-        $errorListHTML = '<table>';
-        $errorListHTML = $errorListHTML . '<colgroup>';
-        $errorListHTML = $errorListHTML . '</colgroup>';
-        $errorListHTML = $errorListHTML . '<thead><tr>';
-        $errorListHTML = $errorListHTML . '<th></th>';
-        $errorListHTML = $errorListHTML . '</thead>ID</tr>';
-        $errorListHTML = $errorListHTML . '</thead>Datum</tr>';
-        $errorListHTML = $errorListHTML . '</thead>Uhrzeit</tr>';
-        $errorListHTML = $errorListHTML . '</thead>Fehlercode</tr>';
-        $errorListHTML = $errorListHTML . '</thead>Beschreibung</tr>';
-        $errorListHTML = $errorListHTML . '<tbody>';
-
-        for ($x = 0; $x < $errorCount; $x++) {
-            $error = $data['errors'][$x];
-            $colorCode = '#555555';
-            if (($x % 2) != 0) $colorCode = '#333333';
-            $errorListHTML = $errorListHTML . '<tr style="background-color:"' . $colorCode . '>';
-
-            $index = $x + 1;
-            $errorListHTML = $errorListHTML . '<td>' . $index . '</td>';
-            $errorListHTML = $errorListHTML . '<td>' . $error['date'] . '</td>';
-            $errorListHTML = $errorListHTML . '<td>' . $error['time'] . '</td>';
-            $errorListHTML = $errorListHTML . '<td>' . $error['error_code'] . '</td>';
-            $errorListHTML = $errorListHTML . '<td>' . $error['error_message'] . '</td>';
-
-            $errorListHTML = $errorListHTML . '</tr>';
-        }
-
-        $errorListHTML = $errorListHTML . '</tbody>';
-        $errorListHTML = $errorListHTML . '</table>';
-
-        $this->SetValue("mowerErrorList", $errorListHTML);
-
-        IPS_SemaphoreLeave($semaphore);
     }
 
     public function ClearErrors()
