@@ -198,10 +198,6 @@ class RobonectWifiModul extends IPSModule
 
     public function UpdateErrorList()
     {
-        // $format = initial / "JSON" (return plain json)
-        //           Array (returns encoded json)
-        //           Http (returns a Http table)
-
         $semaphore = 'Robonect' . $this->InstanceID . '_ErrorList';
         if (IPS_SemaphoreEnter($semaphore, 0) == false) {
             return false;
@@ -232,12 +228,31 @@ class RobonectWifiModul extends IPSModule
                 return true;
             }
 
-            $html = '<table><thead><tr><th>ID</th><th>Datum</th><th>Uhrzeit</th><th>Fehlercode</th><th>Beschreibung</th></tr></thead><tbody>';
+            // Rebuild from the device snapshot, never append polling results.
+            // Repeated codes at different times are separate history entries.
+            $errors = [];
             foreach (array_values($data['errors']) as $index => $error) {
+                $errors[] = ['entry' => $error, 'timestamp' => $this->errorHistoryTimestamp($error), 'index' => $index];
+            }
+            usort($errors, function ($a, $b) {
+                if ($a['timestamp'] === $b['timestamp']) return $a['index'] <=> $b['index'];
+                if ($a['timestamp'] === null) return 1;
+                if ($b['timestamp'] === null) return -1;
+                return $b['timestamp'] <=> $a['timestamp'];
+            });
+
+            $html = '<p>Quelle: Robonect-Fehlerspeicher · Neueste Einträge zuerst</p>';
+            $html .= '<table><thead><tr><th>Nr.</th><th>Datum</th><th>Uhrzeit</th><th>Fehlercode</th><th>Beschreibung</th></tr></thead><tbody>';
+            foreach ($errors as $index => $item) {
+                $error = $item['entry'];
+                $code = isset($error['error_code']) && is_scalar($error['error_code']) ? (string) $error['error_code'] : '';
                 $color = $index % 2 === 0 ? '#555555' : '#333333';
                 $html .= '<tr style="background-color:' . $color . '"><td>' . ($index + 1) . '</td>';
                 foreach (['date', 'time', 'error_code', 'error_message'] as $key) {
                     $value = isset($error[$key]) && is_scalar($error[$key]) ? (string) $error[$key] : '';
+                    if ($key === 'error_message' && (trim($value) === '' || ($code !== '' && preg_match('/^(?:Fehler|Error)\\s*' . preg_quote($code, '/') . '\\s*$/iu', trim($value))))) {
+                        $value = 'Keine nähere Beschreibung vom Gerät';
+                    }
                     $html .= '<td>' . htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</td>';
                 }
                 $html .= '</tr>';
@@ -246,6 +261,21 @@ class RobonectWifiModul extends IPSModule
         } finally {
             IPS_SemaphoreLeave($semaphore);
         }
+    }
+
+    protected function errorHistoryTimestamp(array $error)
+    {
+        // Compare the displayed device clock, independent of Symcon's timezone.
+        if (isset($error['date'], $error['time']) && is_string($error['date']) && is_string($error['time'])) {
+            $text = $error['date'] . ' ' . $error['time'];
+            if (strpos($text, "\0") !== false) return null;
+            foreach (['Y-m-d H:i:s', 'd.m.Y H:i:s'] as $format) {
+                $date = DateTimeImmutable::createFromFormat('!' . $format, $text, new DateTimeZone('UTC'));
+                if ($date !== false && $date->format($format) === $text) return $date->getTimestamp();
+            }
+        }
+        $unix = $error['unix'] ?? null;
+        return (is_int($unix) && $unix >= 0) || (is_string($unix) && preg_match('/^[0-9]+$/D', $unix)) ? (int) $unix : null;
     }
 
     public function ClearErrors()
@@ -913,7 +943,7 @@ class RobonectWifiModul extends IPSModule
         $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
         $choices = $this->visibilityChoices();
         foreach ($discovered as $ident => $item) {
-            if (!isset($definitions[$ident])) $definitions[$ident] = ['name' => $item['name'], 'group' => 'Weitere empfangene Werte', 'extra' => true, 'type' => 'string'];
+            if (!isset($definitions[$ident])) $definitions[$ident] = ['name' => $item['name'], 'group' => 'Zusatzwerte', 'extra' => true, 'type' => 'string'];
         }
         $rows = [];
         // Preserve saved order: older Symcon List forms merge columns by row index.

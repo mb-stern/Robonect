@@ -78,7 +78,7 @@
       "items": [
         {
           "type": "Label",
-          "caption": "New received values start checked. Apply creates selected and deletes unchecked variables. Re-enabling creates a new ID."
+          "caption": "New received values start checked. Apply creates selected and deletes unchecked variables. Re-enabling creates a new ID. Additional values are raw fields from existing HTTP/MQTT data; no extra requests."
         },
         {
           "type": "List",

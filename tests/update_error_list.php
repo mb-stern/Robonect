@@ -39,4 +39,58 @@ foreach ($cases as $name => $case) {
         }
     });
 }
+
+test('Repeated code 203 events remain distinct and polling does not append or rewrite', function () {
+    $m = freshModule();
+    $errors = [];
+    for ($hour = 9; $hour <= 18; $hour++) {
+        $errors[] = ['date' => '2026-10-16', 'time' => sprintf('%02d:00:22', $hour), 'error_code' => 203, 'error_message' => 'Fehler 203'];
+    }
+    $m->responses['error'] = ['successful' => true, 'errors' => $errors];
+    $m->UpdateErrorList();
+    eq($m->values['mowerErrorCount'], 10);
+    eq(substr_count($m->values['mowerErrorList'], '<td>203</td>'), 10);
+    check(strpos($m->values['mowerErrorList'], 'Keine nähere Beschreibung vom Gerät') !== false);
+    check(strpos($m->values['mowerErrorList'], 'No JSON') === false);
+    $calls = $m->setValueCalls;
+    $m->UpdateErrorList();
+    eq($m->values['mowerErrorCount'], 10);
+    eq($m->setValueCalls, $calls);
+});
+test('History sorts ISO and German dates newest first and preserves device descriptions', function () {
+    $m = freshModule();
+    $m->responses['error'] = ['successful' => true, 'errors' => [
+        ['date' => '2026-10-05', 'time' => '13:01:39', 'error_code' => 203, 'error_message' => 'Alt'],
+        ['date' => '16.10.2026', 'time' => '13:01:43', 'error_code' => 203, 'error_message' => 'Neu'],
+        ['date' => '2026-10-16', 'time' => '12:01:23', 'error_code' => 203, 'error_message' => 'Mitte'],
+    ]];
+    $m->UpdateErrorList();
+    $html = $m->values['mowerErrorList'];
+    check(strpos($html, '<td>Neu</td>') < strpos($html, '<td>Mitte</td>'));
+    check(strpos($html, '<td>Mitte</td>') < strpos($html, '<td>Alt</td>'));
+    check(strpos($html, 'Quelle: Robonect-Fehlerspeicher') !== false);
+});
+test('Equal-time history events are retained in device order', function () {
+    $m = freshModule();
+    $m->responses['error'] = ['successful' => true, 'errors' => [
+        ['unix' => 100, 'error_code' => 9, 'error_message' => 'Erster'],
+        ['unix' => '100', 'error_code' => 9, 'error_message' => 'Zweiter'],
+    ]];
+    $m->UpdateErrorList();
+    eq($m->values['mowerErrorCount'], 2);
+    check(strpos($m->values['mowerErrorList'], 'Erster') < strpos($m->values['mowerErrorList'], 'Zweiter'));
+});
+test('Invalid dates and malformed scalar fields do not invent events or descriptions', function () {
+    $m = freshModule();
+    $m->responses['error'] = ['successful' => true, 'errors' => [
+        ['date' => '2026-02-31', 'time' => '12:00:00', 'error_code' => [], 'error_message' => []],
+        ['date' => "2026-10-16\0", 'time' => '12:00:00'],
+        ['unix' => 100, 'error_code' => 9, 'error_message' => 'Gültiger Zeitpunkt'],
+    ]];
+    $m->UpdateErrorList();
+    eq($m->values['mowerErrorCount'], 3);
+    $html = $m->values['mowerErrorList'];
+    check(strpos($html, 'Gültiger Zeitpunkt') < strpos($html, '2026-02-31'));
+    check(strpos($html, 'Keine nähere Beschreibung vom Gerät') !== false);
+});
 finishTests();

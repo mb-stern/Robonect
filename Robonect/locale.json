@@ -32,14 +32,14 @@
       "Default mowing time": "Mähdauer bei Sofortstart",
       "Sleeping mowers receive status requests only; MQTT values remain passive.": "Im Schlaf nur Statusabfragen; MQTT-Werte kommen weiterhin passiv an.",
       "Active variables": "Aktive Variablen",
-      "New received values start checked. Apply creates selected and deletes unchecked variables. Re-enabling creates a new ID.": "Neue Werte erscheinen beim erneuten Öffnen vorausgewählt. Übernehmen legt ausgewählte Variablen an und löscht abgewählte. Erneutes Aktivieren vergibt eine neue ID.",
       "Select active values": "Aktivierte Werte",
       "Enable": "Aktiv",
       "Group": "Bereich",
       "Value": "Wert",
       "Data": "Daten",
       "Diagnostics": "Diagnose",
-      "Information and support": "Informationen und Unterstützung"
+      "Information and support": "Informationen und Unterstützung",
+      "New received values start checked. Apply creates selected and deletes unchecked variables. Re-enabling creates a new ID. Additional values are raw fields from existing HTTP/MQTT data; no extra requests.": "Neue Werte erscheinen beim erneuten Öffnen vorausgewählt. Übernehmen legt ausgewählte Variablen an und löscht abgewählte. Erneutes Aktivieren vergibt eine neue ID. Zusatzwerte sind technische Felder aus bereits empfangenen HTTP-/MQTT-Daten; keine zusätzlichen Abfragen."
     }
   }
 }

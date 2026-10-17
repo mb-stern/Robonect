@@ -36,6 +36,14 @@ Zusätzlich zu den bekannten Variablen können bisher nicht zugeordnete skalare 
 | Pause/Fortsetzen | Fehlgeschlagener Refresh konnte zur Entscheidung anhand alter Werte führen. | Eine unmittelbare gültige Statusantwort mit `stopped` verlangen, sonst keine Steueranfrage senden. |
 | Formular | Lange Ansicht mit vielen Zwischenüberschriften; fehlerhaft maskierter IPv4-RegEx. | Aufklappbare Bereiche, Checkliste und geprüfte IPv4-Validierung. |
 
+## Fehlerhistorie und Zusatzwerte
+
+Die Fehlerliste wird bei jedem `error`-Abruf vollständig durch den vom Gerät gelieferten Fehlerspeicher ersetzt. Wiederholte Abfragen hängen keine neuen Ereignisse an. Derselbe Code mit unterschiedlichen Zeitpunkten bleibt als mehrere Einträge sichtbar; auch zeitgleiche Einträge werden nicht eigenmächtig zusammengefasst. Die Tabelle kennzeichnet die Quelle und sortiert gültige ISO-/deutsche Datumsangaben absteigend; ersatzweise wird `unix` verwendet. Einträge ohne gültigen Zeitpunkt bleiben am Ende in Geräte-Reihenfolge.
+
+Konkrete Fehlertexte des Geräts bleiben erhalten. Ein fehlender Text oder eine bloße Wiederholung wie „Fehler 203“ wird als „Keine nähere Beschreibung vom Gerät“ angezeigt; der Code bleibt in seiner eigenen Spalte sichtbar. Für **Mähercode 203** wurde in den geprüften Quellen keine belastbare Bedeutung gefunden. Er ist nicht mit dem modul-internen Verbindungsstatus 203 („Kein JSON …“) gleichzusetzen. Ob die im Screenshot gezeigten Ereignisse einen tatsächlichen Mäherfehler oder ein Robonect-/Firmwareproblem darstellen, bleibt bis zum Vergleich mit dem Robonect-Webinterface bzw. der originalen `error`-Antwort offen.
+
+Der bisher abgeschnittene Bereich „Weitere empfangene Werte“ heißt nun **„Zusatzwerte“**. Das bezeichnet eine Gruppe, keinen Schalter zum weiteren Empfangen. Beispielsweise ist `HTTP status: status.home` der technische Feldpfad `status.home` aus der Antwort auf `status`; eine Bedeutung für unbekannte Felder wird nicht geraten. „Daten empfangen“ bestätigt lediglich, dass das Feld bereits geliefert wurde. Die Erkennung löst keine zusätzliche Abfrage aus und verändert weder gespeicherte Auswahl noch Idents. Variablen werden weiterhin ausschließlich bei tatsächlicher Wertänderung geschrieben.
+
 ## Ergänzte Istwerte und Befehle
 
 Diese bekannten Zusatzwerte werden bei gültigem Empfang in der Checkliste angeboten und erst nach gespeicherter Auswahl angelegt:
@@ -75,7 +83,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **147 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **151 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php
@@ -95,7 +103,7 @@ Geprüft am 17.10.2026; das Forum ist keine vollständige V1.6-Spezifikation.
 
 - [API und Authentifizierung](https://forum.robonect.de/viewtopic.php?t=9), [API-Fehlercodes](https://forum.robonect.de/viewtopic.php?t=36)
 - [Status](https://forum.robonect.de/viewtopic.php?t=38), [Mähaufträge](https://forum.robonect.de/viewtopic.php?t=11), [Timer](https://forum.robonect.de/viewtopic.php?t=108), [API-Übersicht mit save](https://forum.robonect.de/viewtopic.php?t=2535)
-- [Fehler und Reset](https://forum.robonect.de/viewtopic.php?t=110), [Schlafverhalten](https://forum.robonect.de/viewtopic.php?t=3831), [MQTT](https://forum.robonect.de/viewtopic.php?t=1740)
+- [Fehler und Reset](https://forum.robonect.de/viewtopic.php?t=110), [Mäher-Fehlercodes (unvollständige Liste)](https://forum.robonect.de/viewtopic.php?t=930), [Schlafverhalten](https://forum.robonect.de/viewtopic.php?t=3831), [MQTT](https://forum.robonect.de/viewtopic.php?t=1740)
 - [Home Assistant](https://github.com/geertmeersman/robonect), [aiorobonect](https://github.com/geertmeersman/aiorobonect)
 - [Symcon ReceiveData](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/module/receivedata.md), [Semaphoren](https://www.symcon.de/de/llms/functions/process-control.md)
 - [MaintainVariable](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/module/maintainvariable.md), [UnregisterVariable](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/module/unregistervariable.md), [List](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/configuration-forms/list.md), [ExpansionPanel](https://www.symcon.de/de/llms/developer/sdk-tools/sdk-php/configuration-forms/expansionpanel.md)
