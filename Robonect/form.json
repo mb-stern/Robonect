@@ -67,7 +67,7 @@
         },
         {
           "type": "Label",
-          "caption": "Sleeping mowers receive status requests only; MQTT values remain passive."
+          "caption": "Automatic updates protect sleeping mowers. Refresh all values explicitly queries all supported values and may wake the mower."
         }
       ]
     },

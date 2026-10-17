@@ -58,4 +58,43 @@ test('Visible response distinguishes empty body, HTML, malformed JSON and HTTP e
         check(strpos($message,'bisherige Anzeige bleibt erhalten')!==false);
     }
 });
+test('GPS Latin-1 degree signs are decoded while valid UTF-8 coordinates remain intact', function () {
+    $m=new HTTPModule();
+    foreach(['latin1','utf8'] as $variant){
+        $data=$m->request('gps&case='.$variant);
+        eq($data['gps']['latitude'],'48°30.0000 N');eq($data['gps']['longitude'],'9°15.0000 E');eq($data['gps']['satellites'],11);
+    }
+});
+test('GPS encoding recovery cannot accept truncated JSON', function () {
+    $m=new HTTPModule();eq($m->request('gps&case=broken'),false);eq($m->status,203);
+});
+test('Manual full refresh reads real HTTP GPS and history while status reports sleep', function () {
+    $GLOBALS['objects']=[];
+    $m=new class extends HTTPModule {
+        public $commands=[];
+        protected function executeHTTPCommand($command) {
+            $this->commands[]=$command;
+            if($command==='status')$command='status-sleeping';
+            if($command==='gps')$command='gps&case=latin1';
+            return parent::executeHTTPCommand($command);
+        }
+    };
+    foreach(['mowerGpsLatitudeRaw','mowerGpsLongitudeRaw'] as $ident)$m->RegisterVariableString($ident,$ident,'',0);
+    foreach(['mowerGpsLatitude','mowerGpsLongitude'] as $ident)$m->RegisterVariableFloat($ident,$ident,'',0);
+    $message=$m->RefreshAllValues();eq($m->commands,['status','health','gps','error']);
+    check(strpos($message,'GPS: empfangen')!==false);check(strpos($message,'Fehlerliste: aktualisiert')!==false);
+    eq($m->values['mowerGpsLatitudeRaw'],'48°30.0000 N');closeTo($m->values['mowerGpsLatitude'],48.5);closeTo($m->values['mowerGpsLongitude'],9.25);
+    eq(count($m->types),4);
+    $m->commands=[];$m->Update();eq($m->commands,['status']);
+});
+test('Manual refresh retries cached unsupported commands and reports each actual API error', function () {
+    $GLOBALS['objects']=[];
+    $m=new HTTPModule();eq($m->request('health'),false);
+    $cached=json_decode($m->attributes['UnsupportedCommands'],true);$cached['gps']=true;$m->attributes['UnsupportedCommands']=json_encode($cached);
+    $before=$m->request('counts')['counts'];$message=$m->RefreshAllValues();$after=$m->request('counts')['counts'];
+    eq($after['health'],$before['health']+1);eq($after['gps'],$before['gps']+1);
+    check(strpos($message,'Gerätedaten: nicht unterstützt. Robonect hat den API-Befehl abgelehnt. API-Code 254.')!==false);
+    check(strpos($message,'GPS: Abfrage fehlgeschlagen. Robonect hat den API-Befehl abgelehnt. API-Code 8.')!==false);
+    eq($m->request('health'),false);eq($m->request('counts')['counts']['health'],$after['health']);
+});
 finishTests();

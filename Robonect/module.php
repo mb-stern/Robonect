@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.3';
+    private const MODULE_BUILD = '2026-10-17.4';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     /**
@@ -73,6 +73,11 @@ class RobonectWifiModul extends IPSModule
 
     public function Update()
     {
+        return $this->updateValues(false);
+    }
+
+    protected function updateValues(bool $forceDetails)
+    {
         $this->updateReport = [];
         $semaphore = 'Robonect' . $this->InstanceID . '_Update';
         $this->log('Update - Try to enter Semaphore');
@@ -81,11 +86,20 @@ class RobonectWifiModul extends IPSModule
         };
         try {
             $this->log('Update - Semaphore entered');
+            if ($forceDetails) {
+                // A manual full refresh retries optional commands on the wire.
+                // New confirmed rejections are cached again for background use.
+                $unsupported = json_decode($this->ReadAttributeString('UnsupportedCommands'), true) ?: [];
+                unset($unsupported['health'], $unsupported['gps']);
+                $this->WriteAttributeString('UnsupportedCommands', json_encode((object) $unsupported));
+            }
             $this->updateReport['status'] = false;
             // HTTP status request
             $data = $this->executeHTTPCommand('status');
             if (!$this->responseSuccessful($data)) {
-                return false;
+                $this->updateReport['statusFailure'] = $this->lastHTTPFailure;
+                $mowerStatus = false;
+                if (!$forceDetails) return false;
             } else {
                 $this->observeHTTPValues('status', $data);
                 $mowerStatus = $this->numericValue($data['status']['status'] ?? null);
@@ -141,14 +155,15 @@ class RobonectWifiModul extends IPSModule
                 if (isset($data['clock']['unix'])) $this->updateIdent("mowerUnixTimestamp", $data['clock']['unix']);
             }
 
-            // Status is cached by Robonect. Avoid detail queries while asleep/offline
-            // or when the mower's current state could not be determined.
-            if ($mowerStatus === false || $mowerStatus <= 0 || floor($mowerStatus) != $mowerStatus || in_array((int) $mowerStatus, [16, 17], true)) {
+            // Background updates protect sleep/offline/unknown states.
+            // The explicit manual full refresh bypasses this guard.
+            if (!$forceDetails && ($mowerStatus === false || $mowerStatus <= 0 || floor($mowerStatus) != $mowerStatus || in_array((int) $mowerStatus, [16, 17], true))) {
                 return;
             }
 
             $health = $this->executeHTTPCommand('health');
             $this->updateReport['health'] = $this->responseSuccessful($health);
+            $this->updateReport['healthFailure'] = $this->lastHTTPFailure;
             if ($this->responseSuccessful($health)) {
                 $this->observeHTTPValues('health', $health);
                 foreach (['temperature' => 'mowerTemperature', 'humidity' => 'mowerHumidity'] as $key => $ident) {
@@ -161,11 +176,13 @@ class RobonectWifiModul extends IPSModule
                 }
             }
 
-            // MQTT coordinates arrive passively; only poll GPS when they are stale.
+            // Background updates use fresh passive MQTT coordinates.
+            // An explicit manual full refresh always requests HTTP GPS.
             $lastGPS = (int) $this->GetBuffer('LastMQTTGPS');
-            if ($lastGPS === 0 || time() - $lastGPS >= max(60, $this->ReadPropertyInteger('UpdateTimer') * 2)) {
+            if ($forceDetails || $lastGPS === 0 || time() - $lastGPS >= max(60, $this->ReadPropertyInteger('UpdateTimer') * 2)) {
                 $gps = $this->executeHTTPCommand('gps');
                 $this->updateReport['gps'] = $this->responseSuccessful($gps);
+                $this->updateReport['gpsFailure'] = $this->lastHTTPFailure;
                 if ($this->responseSuccessful($gps)) {
                     $this->observeHTTPValues('gps', $gps);
                     if (isset($gps['gps']['satellites'])) $this->updateIdent('mowerGpsSatellites', $gps['gps']['satellites']);
@@ -176,7 +193,7 @@ class RobonectWifiModul extends IPSModule
                 $this->updateReport['gps'] = 'mqtt';
             }
             // Optional detail failures must not mark a working status connection offline.
-            $this->SetStatus(102);
+            if ($this->updateReport['status']) $this->SetStatus(102);
         } finally {
             IPS_SemaphoreLeave($semaphore);
             $this->log('Update - Semaphore leaved');
@@ -200,21 +217,14 @@ class RobonectWifiModul extends IPSModule
     public function RefreshAllValues()
     {
         $this->refreshCachedErrorHistory();
-        $this->Update();
+        $this->updateValues(true);
         if ($this->updateReport === []) return 'Aktualisierung läuft bereits. Bitte später erneut versuchen.';
-        if (!$this->updateReport['status']) return 'Aktualisierung fehlgeschlagen: keine gültige Statusantwort. ' . $this->lastHTTPFailure;
-        $state = $this->updateReport['mowerStatus'];
-        if (in_array($state, [16.0, 17.0], true)) {
-            return 'Status aktualisiert. Der Mäher schläft oder ist abgeschaltet; Gerätedetails und Fehlerhistorie wurden zum Schutz der Ruhe nicht abgefragt. Gespeicherte 203-Einträge sind ausgeblendet.';
-        }
-        if ($state === false || $state <= 0 || floor($state) != $state) {
-            return 'Statusantwort empfangen, Mäherzustand unbekannt. Gerätedetails und Fehlerhistorie wurden nicht abgefragt.';
-        }
         $unsupported = json_decode($this->ReadAttributeString('UnsupportedCommands'), true) ?: [];
-        $messages = ['Aktualisierung beendet.', 'Status: empfangen'];
+        $messages = ['Manuelle Gesamtaktualisierung beendet.', 'Status: ' . ($this->updateReport['status'] ? 'empfangen' : 'keine gültige Statusantwort. ' . ($this->updateReport['statusFailure'] ?? ''))];
         foreach (['health' => 'Gerätedaten', 'gps' => 'GPS'] as $command => $label) {
             $result = $this->updateReport[$command] ?? false;
             $messages[] = $label . ': ' . ($result === 'mqtt' ? 'aktuelle MQTT-Daten genutzt' : ($result ? 'empfangen' : (isset($unsupported[$command]) ? 'nicht unterstützt' : 'Abfrage fehlgeschlagen')));
+            if ($result === false && !empty($this->updateReport[$command . 'Failure'])) $messages[count($messages) - 1] .= '. ' . $this->updateReport[$command . 'Failure'];
         }
         $messages[] = 'Fehlerliste: ' . ($this->UpdateErrorList() === false ? 'Abfrage fehlgeschlagen; vorhandene Anzeige beibehalten. ' . $this->lastHTTPFailure : 'aktualisiert (Code 203 ausgeblendet)');
         return implode("\n", $messages);
@@ -633,13 +643,13 @@ class RobonectWifiModul extends IPSModule
 
         $data = json_decode($json, true);
         $jsonError = json_last_error();
-        if (explode('&', $command, 2)[0] === 'error' && $jsonError === JSON_ERROR_UTF8) {
-            // Some firmware history texts contain Latin-1 bytes (e.g. ä/ß).
+        if (in_array(explode('&', $command, 2)[0], ['error', 'gps'], true) && $jsonError === JSON_ERROR_UTF8) {
+            // Some firmware texts contain Latin-1 bytes (e.g. ä/ß or GPS °).
             // Preserve valid UTF-8, convert only invalid high bytes, then let
             // the JSON parser validate the complete response again.
-            $data = json_decode($this->decodeLegacyHistoryText($json), true);
+            $data = json_decode($this->decodeLegacyAPIText($json), true);
             $jsonError = json_last_error();
-            if ($jsonError === JSON_ERROR_NONE) $this->log('Latin-1-Zeichen in der Fehlerhistorie nach UTF-8 konvertiert.');
+            if ($jsonError === JSON_ERROR_NONE) $this->log('Latin-1-Zeichen der API-Antwort nach UTF-8 konvertiert.');
         }
         if ($jsonError !== JSON_ERROR_NONE || !is_array($data)) {
             if (trim($json) === '') {
@@ -680,7 +690,7 @@ class RobonectWifiModul extends IPSModule
         return false;
     }
 
-    protected function decodeLegacyHistoryText(string $json)
+    protected function decodeLegacyAPIText(string $json)
     {
         $validUTF8 = '[\xC2-\xDF][\x80-\xBF]'
             . '|\xE0[\xA0-\xBF][\x80-\xBF]'

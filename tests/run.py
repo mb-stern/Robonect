@@ -59,6 +59,15 @@ class Fixture(http.server.BaseHTTPRequestHandler):
                 time.sleep(2)
             elif variant == 'empty':
                 body = ''
+        elif command == 'gps' and 'case' in urllib.parse.parse_qs(parsed.query):
+            variant = urllib.parse.parse_qs(parsed.query)['case'][0]
+            body = json.dumps({'successful': True, 'gps': {'satellites': 11, 'latitude': '48°30.0000 N', 'longitude': '9°15.0000 E'}}, ensure_ascii=False)
+            if variant == 'latin1':
+                body = body.encode('latin-1')
+            elif variant == 'broken':
+                body = body.encode('latin-1')[:-1]
+        elif command == 'status-sleeping':
+            body = json.dumps({'successful': True, 'status': {'status': 17}})
         elif command == 'invalid-utf8':
             body = b'{"successful":true,"name":"M\xe4her"}'
         elif command == 'counts':

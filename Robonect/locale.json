@@ -30,7 +30,6 @@
       "Enable HTTP updates": "Automatische HTTP-Aktualisierung",
       "Update interval": "Intervall",
       "Default mowing time": "Mähdauer bei Sofortstart",
-      "Sleeping mowers receive status requests only; MQTT values remain passive.": "Im Schlaf nur Statusabfragen; MQTT-Werte kommen weiterhin passiv an.",
       "Active variables": "Aktive Variablen",
       "Select active values": "Aktivierte Werte",
       "Enable": "Aktiv",
@@ -44,7 +43,8 @@
       "Variable": "Variable",
       "Apply variable selection": "Variablenauswahl übernehmen",
       "Refresh error history": "Fehlerliste aktualisieren",
-      "Refresh all values": "Alle Werte aktualisieren"
+      "Refresh all values": "Alle Werte aktualisieren",
+      "Automatic updates protect sleeping mowers. Refresh all values explicitly queries all supported values and may wake the mower.": "Automatische Updates schonen schlafende Mäher. „Alle Werte aktualisieren“ fragt ausdrücklich alle unterstützten Werte ab und kann den Mäher aufwecken."
     }
   }
 }

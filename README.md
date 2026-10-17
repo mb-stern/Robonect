@@ -112,7 +112,7 @@ Im Folgenden werden die verfügbaren Statusvariablen mit ihren Eigenschaften, We
 
 #### 4.1.2. Funktionen
 
-Im Testbranch bietet das Formular **„Alle Werte aktualisieren“** mit einer Rückmeldung für Status, Gerätedaten, GPS und Fehlerliste. Schlafende Mäher erhalten nur die Statusabfrage. **„Verbindung testen“** meldet nun Erfolg oder Fehler. Unter „Informationen und Unterstützung“ ist der installierte Teststand sichtbar.
+Im Testbranch bietet das Formular **„Alle Werte aktualisieren“** mit einer Rückmeldung für Status, Gerätedaten, GPS und Fehlerliste. Der manuelle Knopf fragt Status, Gerätedaten, GPS und Fehlerliste auch im Schlaf ab und kann den Mäher aufwecken. Nur automatische Hintergrundupdates bleiben schlafschonend. **„Verbindung testen“** meldet nun Erfolg oder Fehler. Unter „Informationen und Unterstützung“ ist der installierte Teststand sichtbar.
 
 Zusatzwerte erhalten Beschreibungen; die Spalte „Variable“ zeigt, ob bereits ein Objekt existiert. **„Variablenauswahl übernehmen“** legt die aktuell angehakten Werte an und löscht abgewählte Variablen. Ohne gespeicherte Auswahl legt ein Datenabruf keine Zusatzvariablen an. Code 203 bleibt aus Fehlerliste und Fehlerzähler ausgeblendet; alte gespeicherte Anzeigen werden beim Übernehmen bereinigt.
 

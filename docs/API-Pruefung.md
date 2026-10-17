@@ -19,7 +19,7 @@ Zusätzlich zu den bekannten Variablen können bisher nicht zugeordnete skalare 
 
 ## Manuelle Aktualisierung und sichtbarer Teststand
 
-Im Formular stehen „Alle Werte aktualisieren“, „Verbindung testen“ und „Fehlerliste aktualisieren“ bereit. Jeder dieser Knöpfe gibt eine sichtbare Rückmeldung aus. Der Verbindungstest fragt ausschließlich `status` ab. Die Gesamtaktualisierung nutzt den bestehenden Status-/Health-/GPS-Ablauf und ergänzt bei wachem Mäher den Fehlerhistorienabruf. Aktuelle MQTT-GPS-Daten vermeiden weiterhin eine zusätzliche GPS-Anfrage. Rückmeldungen unterscheiden empfangene Daten, nicht unterstützte Befehle, fehlgeschlagene Abfragen und eine bereits laufende Aktualisierung. Bei unbekanntem, schlafendem oder abgeschaltetem Zustand werden Detail- und Historienabfragen ausgelassen und dies ausdrücklich gemeldet.
+Im Formular stehen „Alle Werte aktualisieren“, „Verbindung testen“ und „Fehlerliste aktualisieren“ bereit. Jeder dieser Knöpfe gibt eine sichtbare Rückmeldung aus. Der Verbindungstest fragt ausschließlich `status` ab. Die manuelle Gesamtaktualisierung fragt ausdrücklich `status`, `health`, `gps` und `error` ab, auch bei schlafendem, abgeschaltetem oder unbekanntem Zustand. Sie kann den Mäher aufwecken. Eine fehlgeschlagene Statusabfrage verhindert die übrigen Leseversuche nicht. Auch frische MQTT-GPS-Daten und früher zwischengespeicherte Ablehnungen optionaler Befehle verhindern diese manuellen Abfragen nicht; eine neue bestätigte Ablehnung wird für den Hintergrundbetrieb wieder zwischengespeichert. Rückmeldungen zeigen getrennt, welche Abfrage erfolgreich war, nicht unterstützt wird oder fehlgeschlagen ist, einschließlich der konkreten HTTP-/JSON-/API-Diagnose für GPS und Health. Eine bereits laufende Aktualisierung bleibt gegen parallele Abrufe geschützt. Der normale Timer-Aufruf `Update()` bleibt schlafschonend und nutzt weiterhin frische MQTT-GPS-Daten.
 
 Die Gesamtaktualisierung legt keine neuen Variablen an und überträgt keine Steuerbefehle oder Wochenpläne. „Alle Werte“ bezieht sich auf die bereits unterstützten Istwerte, nicht auf sämtliche zusätzlichen API-Kommandos wie `battery`, `motor` oder `hour`.
 
@@ -27,7 +27,7 @@ Neue vorausgewählte Zusatzwerte können mit **„Variablenauswahl übernehmen�
 
 Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Bereits verwendete Idents und Datentypen bleiben erhalten.
 
-Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.3**; Bibliotheks-Build 3 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend die sichtbare Variablenauswahl übernehmen.
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.4**; Bibliotheks-Build 4 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend die sichtbare Variablenauswahl übernehmen.
 
 ## Korrigierte Fehler
 
@@ -35,7 +35,7 @@ Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.3**; B
 | --- | --- | --- |
 | Semaphoren | Vorzeitige Rückgaben oder Exceptions konnten Sperren offen lassen. | `finally` gibt erfolgreich betretene Sperren in Fehlerliste, Update und MQTT-Verarbeitung frei. |
 | MQTT | Die Paketlänge begrenzte die Nutzdaten nicht; Folgepakete landeten im GPS-/Statuswert. | Symcon-Binärkodierung zuerst zurückwandeln und jedes MQTT-Paket anhand seiner Länge verarbeiten. Fragmentierte Pakete, mehrbyteige Längen, QoS 1/2 und UTF-8 werden berücksichtigt. Text-Abschneide- und Umlaut-Heuristiken entfallen. |
-| Schlafmodus | Jeder HTTP-Update rief auch `health` und `gps` ab. | Zuerst `status`; bei Status 0, 16, 17 oder ungültigem/fehlendem Zustand keine Detailabfragen. Passive MQTT-Werte funktionieren weiter. |
+| Schlafmodus | Jeder HTTP-Update rief auch `health` und `gps` ab. | Hintergrund: zuerst `status`; bei Status 0, 16, 17 oder ungültigem/fehlendem Zustand keine Detailabfragen. Passive MQTT-Werte funktionieren weiter. Der manuelle Knopf fragt auf ausdrücklichen Wunsch auch im Schlaf alle vier unterstützten Datenbereiche ab. |
 | GPS | Nur Grad/Minuten wurde akzeptiert; zusätzliche HTTP-Abfragen trotz aktueller MQTT-Daten. | Dezimalgrad und Grad/Minuten mit Himmelsrichtung, Prüfung pro Koordinate. Ein frisches, nicht-retainiertes MQTT-Koordinatenpaar spart HTTP-GPS. Rückfall auf HTTP nur während der Mäher wach gemeldet wird. |
 | Schreibzugriffe | Gleiche Werte konnten wiederholt an die SDK-Schreibfunktion übergeben werden; abgeleitete Zeitpunkte konnten driften. | Vor jedem `$this->SetValue(...)` wird mit `$this->GetValue(...)` verglichen. Gleiche Werte werden nicht geschrieben. Wiederholte gleiche Statusdauer verschiebt den Status-Zeitpunkt nicht. |
 | Nicht unterstützte Befehle | Detailbefehle wurden immer wieder versucht. | Bestätigte API-Fehler 1/254 bei `gps`/`health` werden bis zum nächsten Übernehmen zwischengespeichert. Zeitüberschreitungen gelten nicht als fehlende Unterstützung. |
@@ -56,11 +56,13 @@ Konkrete Fehlertexte des Geräts bleiben erhalten. Ein fehlender Text oder eine 
 
 Der bisher abgeschnittene Bereich „Weitere empfangene Werte“ heißt nun **„Zusatzwerte“**. Das bezeichnet eine Gruppe, keinen Schalter zum weiteren Empfangen. Beispielsweise ist `HTTP status: status.home` der technische Feldpfad `status.home` aus der Antwort auf `status`; eine Bedeutung für unbekannte Felder wird nicht geraten. „Daten empfangen“ bestätigt lediglich, dass das Feld bereits geliefert wurde. Die Erkennung löst keine zusätzliche Abfrage aus und verändert weder gespeicherte Auswahl noch Idents. Variablen werden weiterhin ausschließlich bei tatsächlicher Wertänderung geschrieben.
 
-## Zeichenkodierung der Fehlerhistorie und Abrufdiagnose
+## Zeichenkodierung von Fehlerhistorie und GPS sowie Abrufdiagnose
 
 Die nachgereichte Browserantwort enthält eine vollständige Fehlerliste mit `successful: true`, jedoch verstümmelte Zeichen im Text von Code 80. Das passt zu einer vom JSON-Standard abweichenden Zeichenkodierung der Fehlertexte; die ursprünglichen Antwortbytes sind durch das Einfügen in den Chat nicht mehr nachweisbar. Eine Fehlerhistorie mit Latin-1-Bytes für „Schneidsystem unregelmäßig“ reproduziert den gemeldeten JSON-Fehler im lokalen HTTP-Test.
 
-Nur beim API-Befehl `error` und ausschließlich nach `JSON_ERROR_UTF8` wird deshalb ein zweiter Dekodierversuch vorgenommen: Gültige UTF-8-Sequenzen bleiben unverändert, einzelne ungültige hohe Bytes werden als Latin-1 nach UTF-8 übertragen. Anschließend wird das komplette JSON erneut streng geprüft. Es erfolgt keine Kürzung, keine Ergänzung fehlender JSON-Klammern und keine Ersetzung von Kontrollzeichen. Andere API-Kommandos bleiben bei der strikten bisherigen Dekodierung. Bereits als Ersatzzeichen `�` empfangener Text lässt sich dadurch nicht rekonstruieren.
+Nur bei den API-Befehlen `error` und `gps` und ausschließlich nach `JSON_ERROR_UTF8` wird deshalb ein zweiter Dekodierversuch vorgenommen: Gültige UTF-8-Sequenzen bleiben unverändert, einzelne ungültige hohe Bytes werden als Latin-1 nach UTF-8 übertragen. Anschließend wird das komplette JSON erneut streng geprüft. Es erfolgt keine Kürzung, keine Ergänzung fehlender JSON-Klammern und keine Ersetzung von Kontrollzeichen. Andere API-Kommandos bleiben bei der strikten bisherigen Dekodierung. Bereits als Ersatzzeichen `�` empfangener Text lässt sich dadurch nicht rekonstruieren.
+
+Die ebenfalls nachgereichte GPS-Antwort enthält ein verstümmeltes Gradzeichen. Der Robonect-Entwickler bestätigt im [GPS-Kodierungsthread](https://forum.robonect.de/viewtopic.php?p=33243#p33243), dass das Gradzeichen nicht als UTF-8 ausgeliefert wurde. Die gleiche gezielte Konvertierung berücksichtigt deshalb auch GPS. Ein realer cURL-Test prüft eine GPS-Antwort mit Latin-1-Gradzeichen, übernimmt die Rohkoordinaten und berechnet daraus die Dezimalkoordinaten. Dabei werden Beispieldaten verwendet, keine privaten Standortdaten.
 
 „Fehlerliste aktualisieren“ meldet jetzt die konkrete Fehlerkategorie: leere Antwort, HTML-Seite, JSON-Syntax-/Kodierungsfehler, unpassendes Listenformat, belegte Sperre oder HTTP-/cURL-Fehler. Bei ungültigen Antworten bleibt die bisherige Anzeige erhalten. Diagnosemeldungen enthalten weder die Antworttexte noch Zugangsdaten. Auch Verbindungstest und Gesamtaktualisierung geben die Abrufdiagnose weiter.
 
@@ -105,7 +107,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **177 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **182 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php
