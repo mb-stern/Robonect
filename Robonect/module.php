@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.4';
+    private const MODULE_BUILD = '2026-10-17.5';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     /**

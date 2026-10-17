@@ -194,16 +194,6 @@
       "type": "Button",
       "caption": "Refresh all values",
       "onClick": "echo ROBONECT_RefreshAllValues($id);"
-    },
-    {
-      "type": "Button",
-      "caption": "Check Connection",
-      "onClick": "echo ROBONECT_TestConnection($id);"
-    },
-    {
-      "type": "Button",
-      "caption": "Refresh error history",
-      "onClick": "echo ROBONECT_RefreshErrorHistory($id);"
     }
   ],
   "status": [

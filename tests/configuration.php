@@ -141,7 +141,7 @@ test('Known alarms get descriptions and unknown extras explicitly retain their r
 });
 test('Form reports installed build and all manual requests have a visible response', function () {
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
-    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.4')!==false);
+    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.5')!==false);
     foreach($form['actions'] as $button)check(strpos($button['onClick'],'echo ')===0);
 });
 finishTests();
