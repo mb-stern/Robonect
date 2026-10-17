@@ -38,9 +38,9 @@ Zusätzlich zu den bekannten Variablen können bisher nicht zugeordnete skalare 
 
 ## Fehlerhistorie und Zusatzwerte
 
-Die Fehlerliste wird bei jedem `error`-Abruf vollständig durch den vom Gerät gelieferten Fehlerspeicher ersetzt. Wiederholte Abfragen hängen keine neuen Ereignisse an. Derselbe Code mit unterschiedlichen Zeitpunkten bleibt als mehrere Einträge sichtbar; auch zeitgleiche Einträge werden nicht eigenmächtig zusammengefasst. Die Tabelle kennzeichnet die Quelle und sortiert gültige ISO-/deutsche Datumsangaben absteigend; ersatzweise wird `unix` verwendet. Einträge ohne gültigen Zeitpunkt bleiben am Ende in Geräte-Reihenfolge.
+Die Fehlerliste wird bei jedem `error`-Abruf vollständig durch den vom Gerät gelieferten Fehlerspeicher ersetzt. Wiederholte Abfragen hängen keine neuen Ereignisse an. **Code 203 wird auf Wunsch aus der Anzeige herausgefiltert und nicht im Fehlerzähler berücksichtigt.** Wenn nur solche Einträge vorliegen, werden Anzeige und Zähler geleert. Es erfolgt kein Löschbefehl an das Gerät; aktive Fehlerwerte und der Verbindungsstatus bleiben unberührt. Andere Codes mit unterschiedlichen Zeitpunkten bleiben als mehrere Einträge sichtbar; auch zeitgleiche Einträge werden nicht eigenmächtig zusammengefasst. Die Tabelle kennzeichnet die Quelle und sortiert gültige ISO-/deutsche Datumsangaben absteigend; ersatzweise wird `unix` verwendet. Einträge ohne gültigen Zeitpunkt bleiben am Ende in Geräte-Reihenfolge.
 
-Konkrete Fehlertexte des Geräts bleiben erhalten. Ein fehlender Text oder eine bloße Wiederholung wie „Fehler 203“ wird als „Keine nähere Beschreibung vom Gerät“ angezeigt; der Code bleibt in seiner eigenen Spalte sichtbar. Für **Mähercode 203** wurde in den geprüften Quellen keine belastbare Bedeutung gefunden. Er ist nicht mit dem modul-internen Verbindungsstatus 203 („Kein JSON …“) gleichzusetzen. Ob die im Screenshot gezeigten Ereignisse einen tatsächlichen Mäherfehler oder ein Robonect-/Firmwareproblem darstellen, bleibt bis zum Vergleich mit dem Robonect-Webinterface bzw. der originalen `error`-Antwort offen.
+Konkrete Fehlertexte des Geräts bleiben erhalten. Ein fehlender Text oder eine bloße Wiederholung wie „Fehler 9“ wird als „Keine nähere Beschreibung vom Gerät“ angezeigt; der Code bleibt in seiner eigenen Spalte sichtbar. Für **Mähercode 203** wurde in den geprüften Quellen keine belastbare Bedeutung gefunden. Er ist nicht mit dem modul-internen Verbindungsstatus 203 („Kein JSON …“) gleichzusetzen. Der nachgereichte Screenshot bestätigt dieselben 203-Einträge im Robonect-Webinterface. Ob sie einen tatsächlichen Mäherfehler oder ein Robonect-/Firmwareproblem darstellen, bleibt offen.
 
 Der bisher abgeschnittene Bereich „Weitere empfangene Werte“ heißt nun **„Zusatzwerte“**. Das bezeichnet eine Gruppe, keinen Schalter zum weiteren Empfangen. Beispielsweise ist `HTTP status: status.home` der technische Feldpfad `status.home` aus der Antwort auf `status`; eine Bedeutung für unbekannte Felder wird nicht geraten. „Daten empfangen“ bestätigt lediglich, dass das Feld bereits geliefert wurde. Die Erkennung löst keine zusätzliche Abfrage aus und verändert weder gespeicherte Auswahl noch Idents. Variablen werden weiterhin ausschließlich bei tatsächlicher Wertänderung geschrieben.
 
@@ -83,7 +83,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **151 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **154 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php

@@ -222,6 +222,12 @@ class RobonectWifiModul extends IPSModule
                 if (!is_array($error)) return false;
             }
 
+            // Hide code 203 from the displayed history and its count only.
+            // The device's error memory and active fault status stay untouched.
+            $data['errors'] = array_values(array_filter($data['errors'], function ($error) {
+                return !in_array($error['error_code'] ?? null, [203, '203'], true);
+            }));
+
             $this->writeMeasurement('mowerErrorCount', count($data['errors']));
             if (count($data['errors']) === 0) {
                 $this->writeMeasurement('mowerErrorList', '');
