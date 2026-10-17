@@ -9,13 +9,31 @@ Die Konfiguration ist in fünf aufklappbare Bereiche gegliedert: Verbindung, Akt
 Die Checkliste bestimmt, welche Statusvariablen angelegt werden:
 
 - Die 35 bisherigen Variablen behalten ihre bisherigen Idents, Typen und Profile. Ohne gespeicherte Auswahl wird keine davon entfernt.
-- Neu empfangene Werte erscheinen beim erneuten Öffnen der Konfiguration **vorausgewählt** in der Checkliste. Das Öffnen der Liste verändert keine Variablen und speichert keine Auswahl.
+- Neu empfangene Werte erscheinen beim erneuten Öffnen der Konfiguration oder nach „Alle Werte aktualisieren“ **vorausgewählt** in der Checkliste. Das Öffnen der Liste verändert keine Variablen und speichert keine Auswahl.
 - Erst die gespeicherte Auswahl berechtigt die Anlage: Ein normaler Hintergrundabruf, ein Modulneustart oder `ApplyChanges()` ohne gespeicherten Haken legt keine neue Zusatzvariable an.
 - Beim Übernehmen werden ausgewählte Variablen über `$this->MaintainVariable(..., true)` angelegt/beibehalten. Abgewählte werden über `$this->MaintainVariable(..., false)` tatsächlich gelöscht, wie vom Nutzer gewünscht. Beim späteren Aktivieren entsteht eine neue ID; bestehende Referenzen werden dadurch nicht automatisch umgestellt.
 - Eine bewusst abgewählte Variable bleibt abgewählt, auch wenn neue Daten dafür eintreffen. Hintergrundaktualisierung und Bedienfunktionen funktionieren unabhängig davon, welche Anzeigevariablen vorhanden sind.
 - Variablen mit eigenen Unterobjekten werden vor dem Löschen abgefangen. Der modulinterne Wochenplan wird vor dem Entfernen seiner Statusvariable erhalten, zur Instanz verschoben und seine lokale Schaltaktion deaktiviert. Beim erneuten Aktivieren wird er wieder zugeordnet.
 
 Zusätzlich zu den bekannten Variablen können bisher nicht zugeordnete skalare Daten aus den ohnehin abgefragten Antworten `status`, `health`, `gps` und aus MQTT angeboten werden. Unbekannte Werte bleiben als **String-Rohwerte** erhalten; Einheit und Bedeutung werden nicht geraten. Der Ident wird stabil aus Quelle und Pfad abgeleitet. Listen/Historien mit numerischen Indizes, Zugangsdatenfelder und MQTT-Steuertopics werden nicht in einzelne neue Variablen umgewandelt. Für die Erkennung werden keine zusätzlichen API-Befehle aufgerufen.
+
+## Sichtbarkeit und MQTT-/HTTP-Abdeckung
+
+Die 35 bisherigen Definitionen stehen immer in der Checkliste. Die vier bekannten Zusatzdefinitionen werden derzeit erst nach gültigem Datenempfang, bei vorhandenem Objekt oder bei gespeicherter Auswahl gezeigt. Weitere Rohwerte erscheinen nach ihrer Erkennung über MQTT beziehungsweise die unterstützten HTTP-Antworten. Fehlende Einträge beweisen daher weder fehlende Geräteunterstützung noch das Ausbleiben sämtlicher Daten. Für noch nicht angebundene Datenbereiche wie `battery`, `hour`, `motor` und `wire` gibt es noch keinen vollständigen Variablenkatalog.
+
+Ein bestätigtes Anzeigeproblem wurde behoben: „Alle Werte aktualisieren“ füllt jetzt auch die bereits geöffnete Checkliste mit neu erkannten Feldern. Der Knopf übergibt die momentan angezeigten Haken; sie werden beim Zusammenführen anhand des Idents erhalten. Dadurch gehen noch nicht gespeicherte Änderungen nicht verloren. Die Aktualisierung speichert keine Auswahl und legt keine Variablen an. Neue MQTT-Felder ohne manuellen Abruf werden beim nächsten Öffnen berücksichtigt.
+
+MQTT und HTTP ergänzen sich im aktuellen Modul:
+
+| Daten / Funktion | Umsetzung |
+| --- | --- |
+| Mäherstatus, Modus, Akkustand, Spannungen, Klima, Messerwerte, GPS, aktueller Fehler, nächster Timerstart | Über entsprechende MQTT-Topics, soweit vom Gerät gesendet; viele dieser Werte zusätzlich über HTTP. |
+| Status-/Substatus-Klartext und MQTT-Verbindungsstatus | Im Modul über MQTT bzw. daraus abgeleitet. |
+| Name, Seriennummer, Geräteuhr und zusätzliche Health-Alarmfelder | Im Modul aus den HTTP-Antworten. Unbekannte MQTT-Topics werden als eigene Rohwerte angeboten, nicht automatisch diesen Feldern zugeordnet. |
+| Hintergrundintervall | Fragt `status` ab; bei wach gemeldetem Mäher zusätzlich `health` und bei fehlenden frischen MQTT-Koordinaten `gps`. Keine Fehlerhistorie. |
+| Vollständige Fehlerhistorie und Fehlerzähler | Über `error`, manuell über „Alle Werte aktualisieren“ oder die vorhandene Skriptfunktion. |
+
+Welche Topics die konkrete Robonect-V1.6-Konfiguration tatsächlich sendet, ist ohne Brokerdaten nicht vollständig geprüft. Bei zuverlässigem MQTT ist ein längeres HTTP-Intervall, etwa 120–300 Sekunden, ein möglicher Ausgangspunkt. Ohne HTTP-Hintergrundupdates aktualisieren sich ausschließlich per HTTP angebundene Werte erst beim manuellen Abruf. Der Empfang von MQTT ist unabhängig vom HTTP-Timer.
 
 ## Manuelle Aktualisierung und sichtbarer Teststand
 
@@ -27,7 +45,7 @@ Neue vorausgewählte Zusatzwerte können mit **„Variablenauswahl übernehmen�
 
 Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Bereits verwendete Idents und Datentypen bleiben erhalten.
 
-Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.5**; Bibliotheks-Build 5 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend die sichtbare Variablenauswahl übernehmen.
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.6**; Bibliotheks-Build 6 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend die sichtbare Variablenauswahl übernehmen.
 
 ## Korrigierte Fehler
 
@@ -107,7 +125,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **182 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **183 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php

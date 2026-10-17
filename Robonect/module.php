@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.5';
+    private const MODULE_BUILD = '2026-10-17.6';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     /**
@@ -214,7 +214,7 @@ class RobonectWifiModul extends IPSModule
             : 'Fehlerliste aktualisiert (Code 203 ausgeblendet).';
     }
 
-    public function RefreshAllValues()
+    public function RefreshAllValues(string $selection = '')
     {
         $this->refreshCachedErrorHistory();
         $this->updateValues(true);
@@ -227,7 +227,29 @@ class RobonectWifiModul extends IPSModule
             if ($result === false && !empty($this->updateReport[$command . 'Failure'])) $messages[count($messages) - 1] .= '. ' . $this->updateReport[$command . 'Failure'];
         }
         $messages[] = 'Fehlerliste: ' . ($this->UpdateErrorList() === false ? 'Abfrage fehlgeschlagen; vorhandene Anzeige beibehalten. ' . $this->lastHTTPFailure : 'aktualisiert (Code 203 ausgeblendet)');
+        $this->refreshVariableChecklist($selection);
         return implode("\n", $messages);
+    }
+
+    protected function refreshVariableChecklist(string $selection)
+    {
+        // Form edits are not properties until explicitly applied. Carry them
+        // forward by Ident while adding new discoveries to the open checklist.
+        $choices = [];
+        $displayed = json_decode($selection, true);
+        if (is_array($displayed)) {
+            foreach ($displayed as $row) {
+                if (is_array($row) && isset($row['Ident'], $row['Visible']) && is_string($row['Ident']) && is_bool($row['Visible'])) {
+                    $choices[$row['Ident']] = $row['Visible'];
+                }
+            }
+        }
+        $rows = $this->visibilityRows();
+        foreach ($rows as &$row) {
+            if (array_key_exists($row['Ident'], $choices)) $row['Visible'] = $choices[$row['Ident']];
+        }
+        unset($row);
+        $this->UpdateFormField('VariableVisibility', 'values', json_encode($rows));
     }
 
     public function Start()

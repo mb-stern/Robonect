@@ -48,7 +48,7 @@
             {
               "type": "NumberSpinner",
               "name": "UpdateTimer",
-              "caption": "Update interval",
+              "caption": "HTTP update interval",
               "minimum": 10,
               "maximum": 300,
               "suffix": "seconds",
@@ -67,7 +67,7 @@
         },
         {
           "type": "Label",
-          "caption": "Automatic updates protect sleeping mowers. Refresh all values explicitly queries all supported values and may wake the mower."
+          "caption": "HTTP updates supplement MQTT. The interval controls background API requests. Automatic updates protect sleep; Refresh all values may wake the mower."
         }
       ]
     },
@@ -193,7 +193,11 @@
     {
       "type": "Button",
       "caption": "Refresh all values",
-      "onClick": "echo ROBONECT_RefreshAllValues($id);"
+      "onClick": [
+        "$selection = [];",
+        "foreach ($VariableVisibility as $row) { $selection[] = ['Ident' => $row['Ident'], 'Visible' => $row['Visible']]; }",
+        "echo ROBONECT_RefreshAllValues($id, json_encode($selection));"
+      ]
     }
   ],
   "status": [

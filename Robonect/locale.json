@@ -44,7 +44,8 @@
       "Apply variable selection": "Variablenauswahl übernehmen",
       "Refresh error history": "Fehlerliste aktualisieren",
       "Refresh all values": "Alle Werte aktualisieren",
-      "Automatic updates protect sleeping mowers. Refresh all values explicitly queries all supported values and may wake the mower.": "Automatische Updates schonen schlafende Mäher. „Alle Werte aktualisieren“ fragt ausdrücklich alle unterstützten Werte ab und kann den Mäher aufwecken."
+      "HTTP updates supplement MQTT. The interval controls background API requests. Automatic updates protect sleep; Refresh all values may wake the mower.": "HTTP-Updates ergänzen MQTT. Das Intervall bestimmt die regelmäßigen API-Abfragen. Im Hintergrund wird der Schlaf geschont; „Alle Werte aktualisieren“ kann den Mäher aufwecken.",
+      "HTTP update interval": "HTTP-Abfrageintervall"
     }
   }
 }

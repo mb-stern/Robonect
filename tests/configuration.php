@@ -141,7 +141,23 @@ test('Known alarms get descriptions and unknown extras explicitly retain their r
 });
 test('Form reports installed build and all manual requests have a visible response', function () {
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
-    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.5')!==false);
-    foreach($form['actions'] as $button)check(strpos($button['onClick'],'echo ')===0);
+    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.6')!==false);
+    foreach($form['actions'] as $button){$script=is_array($button['onClick'])?implode("\n",$button['onClick']):$button['onClick'];check(strpos($script,'echo ')!==false);}
+});
+test('Full refresh updates the open checklist and preserves unsaved choices without creating variables',function(){
+    $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
+    $displayed=selectionRows($m);foreach($displayed as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
+    $before=$m->properties['VariableVisibility'];$calls=$GLOBALS['maintainCalls'];
+    $m->responses=['status'=>['successful'=>true,'status'=>['status'=>17,'distance'=>42]],'gps'=>['successful'=>true,'gps'=>['satellites'=>11]],'error'=>['successful'=>true,'errors'=>[]]];
+    $id=$m->InstanceID;$VariableVisibility=new ArrayIterator($displayed);
+    ob_start();try{eval(implode("\n",$form['actions'][0]['onClick']));$message=ob_get_contents();}finally{ob_end_clean();}
+    check(strpos($message,'Manuelle Gesamtaktualisierung beendet')!==false);
+    $last=end($m->formUpdates);eq($last[0],'VariableVisibility');$rows=json_decode($last[2],true);
+    eq(rowByIdent($rows,'mowerHours')['Visible'],false);
+    $extra='extra_'.substr(sha1('HTTP status: status.distance'),0,20);
+    eq(rowByIdent($rows,$extra)['Visible'],true);eq(rowByIdent($rows,$extra)['Variable'],'Nicht angelegt');
+    eq(rowByIdent($rows,'mowerGpsSatellites')['Visible'],true);
+    eq($m->properties['VariableVisibility'],$before);eq($GLOBALS['maintainCalls'],$calls);eq(count($m->types),35);
+    $m->ApplyChanges();eq(count($m->types),35);
 });
 finishTests();
