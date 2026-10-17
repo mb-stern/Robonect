@@ -27,7 +27,7 @@ Neue vorausgewählte Zusatzwerte können mit **„Variablenauswahl übernehmen�
 
 Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Bereits verwendete Idents und Datentypen bleiben erhalten.
 
-Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.2**; Bibliotheks-Build 2 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend die sichtbare Variablenauswahl übernehmen.
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.3**; Bibliotheks-Build 3 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend die sichtbare Variablenauswahl übernehmen.
 
 ## Korrigierte Fehler
 
@@ -55,6 +55,16 @@ Die Fehlerliste wird bei jedem `error`-Abruf vollständig durch den vom Gerät g
 Konkrete Fehlertexte des Geräts bleiben erhalten. Ein fehlender Text oder eine bloße Wiederholung wie „Fehler 9“ wird als „Keine nähere Beschreibung vom Gerät“ angezeigt; der Code bleibt in seiner eigenen Spalte sichtbar. Für **Mähercode 203** wurde in den geprüften Quellen keine belastbare Bedeutung gefunden. Er ist nicht mit dem modul-internen Verbindungsstatus 203 („Kein JSON …“) gleichzusetzen. Der nachgereichte Screenshot bestätigt dieselben 203-Einträge im Robonect-Webinterface. Ob sie einen tatsächlichen Mäherfehler oder ein Robonect-/Firmwareproblem darstellen, bleibt offen.
 
 Der bisher abgeschnittene Bereich „Weitere empfangene Werte“ heißt nun **„Zusatzwerte“**. Das bezeichnet eine Gruppe, keinen Schalter zum weiteren Empfangen. Beispielsweise ist `HTTP status: status.home` der technische Feldpfad `status.home` aus der Antwort auf `status`; eine Bedeutung für unbekannte Felder wird nicht geraten. „Daten empfangen“ bestätigt lediglich, dass das Feld bereits geliefert wurde. Die Erkennung löst keine zusätzliche Abfrage aus und verändert weder gespeicherte Auswahl noch Idents. Variablen werden weiterhin ausschließlich bei tatsächlicher Wertänderung geschrieben.
+
+## Zeichenkodierung der Fehlerhistorie und Abrufdiagnose
+
+Die nachgereichte Browserantwort enthält eine vollständige Fehlerliste mit `successful: true`, jedoch verstümmelte Zeichen im Text von Code 80. Das passt zu einer vom JSON-Standard abweichenden Zeichenkodierung der Fehlertexte; die ursprünglichen Antwortbytes sind durch das Einfügen in den Chat nicht mehr nachweisbar. Eine Fehlerhistorie mit Latin-1-Bytes für „Schneidsystem unregelmäßig“ reproduziert den gemeldeten JSON-Fehler im lokalen HTTP-Test.
+
+Nur beim API-Befehl `error` und ausschließlich nach `JSON_ERROR_UTF8` wird deshalb ein zweiter Dekodierversuch vorgenommen: Gültige UTF-8-Sequenzen bleiben unverändert, einzelne ungültige hohe Bytes werden als Latin-1 nach UTF-8 übertragen. Anschließend wird das komplette JSON erneut streng geprüft. Es erfolgt keine Kürzung, keine Ergänzung fehlender JSON-Klammern und keine Ersetzung von Kontrollzeichen. Andere API-Kommandos bleiben bei der strikten bisherigen Dekodierung. Bereits als Ersatzzeichen `�` empfangener Text lässt sich dadurch nicht rekonstruieren.
+
+„Fehlerliste aktualisieren“ meldet jetzt die konkrete Fehlerkategorie: leere Antwort, HTML-Seite, JSON-Syntax-/Kodierungsfehler, unpassendes Listenformat, belegte Sperre oder HTTP-/cURL-Fehler. Bei ungültigen Antworten bleibt die bisherige Anzeige erhalten. Diagnosemeldungen enthalten weder die Antworttexte noch Zugangsdaten. Auch Verbindungstest und Gesamtaktualisierung geben die Abrufdiagnose weiter.
+
+Der Abruf erfolgt synchron mit bis zu 30 Sekunden Antwortzeit und bis zu 5 Sekunden für den Verbindungsaufbau. Eine Antwort nach rund zwei Sekunden wird vollständig abgewartet; eine zusätzliche Pause nach dem Empfang ist nicht erforderlich. Ein echter cURL-Test mit einer um zwei Sekunden verzögerten lokalen Antwort bestätigt dieses Verhalten.
 
 ## Ergänzte Istwerte und Befehle
 
@@ -95,7 +105,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **169 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **177 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php

@@ -12,6 +12,7 @@ import os
 import pathlib
 import subprocess
 import threading
+import time
 import urllib.parse
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -34,7 +35,33 @@ class Fixture(http.server.BaseHTTPRequestHandler):
             return
         responses = {'invalid-json': '{', 'html': '<html>login</html>', 'empty': '', 'null': 'null', 'scalar': '42', 'array': '[]',
                      'missing-flag': '{"name":"other device"}', 'string-flag': '{"successful":"false"}'}
-        if command == 'counts':
+        if command == 'error':
+            variant = urllib.parse.parse_qs(parsed.query).get('case', ['latin1'])[0]
+            entries = [
+                {'error_code': 203, 'error_message': 'Fehler 203'},
+                {'error_code': 80, 'error_message': 'Schneidsystem unregelmäßig'},
+                {'error_code': 2, 'error_message': 'Kein Schleifensignal'},
+            ]
+            body = json.dumps({'successful': True, 'errors': entries}, ensure_ascii=False)
+            if variant == 'latin1':
+                body = body.encode('latin-1')
+            elif variant == 'mixed':
+                entries[2]['error_message'] = 'Mäher 🚜 – kein Schleifensignal'
+                body = json.dumps({'successful': True, 'errors': entries}, ensure_ascii=False).encode()
+                body = body.replace('unregelmäßig'.encode(), 'unregelmäßig'.encode('latin-1'))
+            elif variant == 'broken':
+                body = body.encode('latin-1')[:-1]
+            elif variant == 'control':
+                body = body.encode('latin-1').replace(b'Schneidsystem', b'Schneid\x01system')
+            elif variant == 'html':
+                body = '<html>login</html>'
+            elif variant == 'delayed':
+                time.sleep(2)
+            elif variant == 'empty':
+                body = ''
+        elif command == 'invalid-utf8':
+            body = b'{"successful":true,"name":"M\xe4her"}'
+        elif command == 'counts':
             body = json.dumps({'successful': True, 'counts': counts})
         elif command in ['rejected', 'health', 'gps']:
             body = json.dumps({'successful': False, 'error_code': {'rejected': 3, 'health': 254, 'gps': 8}[command]})
@@ -43,7 +70,7 @@ class Fixture(http.server.BaseHTTPRequestHandler):
         self.send_response(503 if command == 'http-error' else 200)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.end_headers()
-        self.wfile.write(body.encode())
+        self.wfile.write(body if isinstance(body, bytes) else body.encode())
 
 env = os.environ.copy()
 env['NO_PROXY'] = '127.0.0.1'

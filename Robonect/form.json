@@ -203,7 +203,7 @@
     {
       "type": "Button",
       "caption": "Refresh error history",
-      "onClick": "echo ROBONECT_UpdateErrorList($id) === false ? 'Fehlerliste konnte nicht aktualisiert werden.' : 'Fehlerliste aktualisiert (Code 203 ausgeblendet).';"
+      "onClick": "echo ROBONECT_RefreshErrorHistory($id);"
     }
   ],
   "status": [

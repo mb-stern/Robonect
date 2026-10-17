@@ -160,4 +160,10 @@ test('Numeric formatting of 203 cannot bypass the history filter', function () {
     $m->responses['error']=['successful'=>true,'errors'=>$errors];$m->UpdateErrorList();
     eq($m->values['mowerErrorCount'],1);check(strpos($m->values['mowerErrorList'],'<td>2030</td>')!==false);
 });
+test('History button reports malformed response and lock contention without exposing response contents', function () {
+    $m=freshModule();$m->responses['error']=['successful'=>true,'errors'=>'unexpected'];$m->values['mowerErrorList']='Vorhandene Liste';
+    $message=$m->RefreshErrorHistory();check(strpos($message,'keine gültige Fehlerliste')!==false);eq($m->values['mowerErrorList'],'Vorhandene Liste');
+    $GLOBALS['canEnter']=false;$message=$m->RefreshErrorHistory();check(strpos($message,'läuft bereits')!==false);
+    check(strpos($message,'keine gültige Fehlerliste')===false);
+});
 finishTests();

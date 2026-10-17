@@ -3,8 +3,9 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.2';
+    private const MODULE_BUILD = '2026-10-17.3';
     private $updateReport = [];
+    private $lastHTTPFailure = '';
     /**
      * Die folgenden Funktionen stehen automatisch zur Verfügung, wenn das Modul über die "Module Control" eingefügt wurden.
      * Die Funktionen werden, mit dem selbst eingerichteten Prefix, in PHP und JSON-RPC wiefolgt zur Verfügung gestellt:
@@ -186,7 +187,14 @@ class RobonectWifiModul extends IPSModule
     {
         return $this->responseSuccessful($this->executeHTTPCommand('status'))
             ? 'Verbindung zu Robonect erfolgreich.'
-            : 'Verbindung zu Robonect fehlgeschlagen. Adresse, Zugangsdaten und Instanzstatus prüfen.';
+            : 'Verbindung zu Robonect fehlgeschlagen. ' . $this->lastHTTPFailure;
+    }
+
+    public function RefreshErrorHistory()
+    {
+        return $this->UpdateErrorList() === false
+            ? 'Fehlerliste konnte nicht aktualisiert werden. ' . $this->lastHTTPFailure . ' Die bisherige Anzeige bleibt erhalten.'
+            : 'Fehlerliste aktualisiert (Code 203 ausgeblendet).';
     }
 
     public function RefreshAllValues()
@@ -194,7 +202,7 @@ class RobonectWifiModul extends IPSModule
         $this->refreshCachedErrorHistory();
         $this->Update();
         if ($this->updateReport === []) return 'Aktualisierung läuft bereits. Bitte später erneut versuchen.';
-        if (!$this->updateReport['status']) return 'Aktualisierung fehlgeschlagen: keine gültige Statusantwort. Adresse, Zugangsdaten und Instanzstatus prüfen.';
+        if (!$this->updateReport['status']) return 'Aktualisierung fehlgeschlagen: keine gültige Statusantwort. ' . $this->lastHTTPFailure;
         $state = $this->updateReport['mowerStatus'];
         if (in_array($state, [16.0, 17.0], true)) {
             return 'Status aktualisiert. Der Mäher schläft oder ist abgeschaltet; Gerätedetails und Fehlerhistorie wurden zum Schutz der Ruhe nicht abgefragt. Gespeicherte 203-Einträge sind ausgeblendet.';
@@ -208,7 +216,7 @@ class RobonectWifiModul extends IPSModule
             $result = $this->updateReport[$command] ?? false;
             $messages[] = $label . ': ' . ($result === 'mqtt' ? 'aktuelle MQTT-Daten genutzt' : ($result ? 'empfangen' : (isset($unsupported[$command]) ? 'nicht unterstützt' : 'Abfrage fehlgeschlagen')));
         }
-        $messages[] = 'Fehlerliste: ' . ($this->UpdateErrorList() === false ? 'Abfrage fehlgeschlagen; vorhandene Anzeige beibehalten' : 'aktualisiert (Code 203 ausgeblendet)');
+        $messages[] = 'Fehlerliste: ' . ($this->UpdateErrorList() === false ? 'Abfrage fehlgeschlagen; vorhandene Anzeige beibehalten. ' . $this->lastHTTPFailure : 'aktualisiert (Code 203 ausgeblendet)');
         return implode("\n", $messages);
     }
 
@@ -238,8 +246,10 @@ class RobonectWifiModul extends IPSModule
 
     public function UpdateErrorList()
     {
+        $this->lastHTTPFailure = '';
         $semaphore = 'Robonect' . $this->InstanceID . '_ErrorList';
         if (IPS_SemaphoreEnter($semaphore, 0) == false) {
+            $this->lastHTTPFailure = 'Ein anderer Fehlerlistenabruf läuft bereits.';
             return false;
         };
 
@@ -256,10 +266,14 @@ class RobonectWifiModul extends IPSModule
                 }
             }
             if (!$this->responseSuccessful($data) || !isset($data['errors']) || !is_array($data['errors'])) {
+                if ($this->lastHTTPFailure === '') $this->lastHTTPFailure = 'Die Antwort enthält keine gültige Fehlerliste.';
                 return false;
             }
             foreach ($data['errors'] as $error) {
-                if (!is_array($error)) return false;
+                if (!is_array($error)) {
+                    $this->lastHTTPFailure = 'Die Fehlerliste enthält einen Eintrag mit unbekanntem Format.';
+                    return false;
+                }
             }
 
             return $this->renderErrorHistory($data['errors']);
@@ -578,25 +592,23 @@ class RobonectWifiModul extends IPSModule
 
     protected function executeHTTPCommand($command)
     {
+        $this->lastHTTPFailure = '';
         $address = trim($this->ReadPropertyString('IPAddress'));
         if ($address === '0.0.0.0' || $address === '') {
-            $this->SetStatus(200);
-            return false;
+            return $this->httpFailure('Es ist keine Geräteadresse eingerichtet.', 200);
         }
         if (filter_var($address, FILTER_VALIDATE_IP) === false) {
-            $this->SetStatus(201);
-            return false;
+            return $this->httpFailure('Die eingerichtete Geräteadresse ist ungültig.', 201);
         }
-        if ($command === '') return false;
+        if ($command === '') return $this->httpFailure('Es wurde kein API-Befehl angegeben.');
         $readCommand = in_array($command, ['gps', 'health'], true);
         $unsupported = json_decode($this->ReadAttributeString('UnsupportedCommands'), true) ?: [];
-        if ($readCommand && isset($unsupported[$command])) return false;
+        if ($readCommand && isset($unsupported[$command])) return $this->httpFailure('Dieser optionale API-Befehl wird vom Gerät nicht unterstützt.');
         if (strpos($address, ':') !== false) $address = '[' . $address . ']';
 
         $ch = curl_init();
         if ($ch === false) {
-            $this->SetStatus(202);
-            return false;
+            return $this->httpFailure('Die HTTP-Verbindung konnte nicht gestartet werden.', 202);
         }
         try {
             curl_setopt_array($ch, [
@@ -610,25 +622,40 @@ class RobonectWifiModul extends IPSModule
             $json = curl_exec($ch);
             $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
             if ($json === false || $httpCode !== 200) {
-                $this->log('HTTP request failed (HTTP ' . $httpCode . ', cURL ' . curl_errno($ch) . ')');
-                $this->SetStatus(202);
-                return false;
+                $reason = in_array($httpCode, [401, 403], true) ? 'Zugriff abgelehnt; Benutzername und Passwort prüfen.' : 'Die HTTP-Abfrage ist fehlgeschlagen.';
+                return $this->httpFailure($reason . ' HTTP ' . $httpCode . ', cURL ' . curl_errno($ch) . '.', 202);
             }
         } catch (Throwable $e) {
-            $this->SetStatus(202);
-            return false;
+            return $this->httpFailure('Bei der HTTP-Abfrage ist ein Verbindungsfehler aufgetreten.', 202);
         } finally {
             curl_close($ch);
         }
 
         $data = json_decode($json, true);
-        if (json_last_error() !== JSON_ERROR_NONE || !is_array($data)) {
-            $this->SetStatus(203);
-            return false;
+        $jsonError = json_last_error();
+        if (explode('&', $command, 2)[0] === 'error' && $jsonError === JSON_ERROR_UTF8) {
+            // Some firmware history texts contain Latin-1 bytes (e.g. ä/ß).
+            // Preserve valid UTF-8, convert only invalid high bytes, then let
+            // the JSON parser validate the complete response again.
+            $data = json_decode($this->decodeLegacyHistoryText($json), true);
+            $jsonError = json_last_error();
+            if ($jsonError === JSON_ERROR_NONE) $this->log('Latin-1-Zeichen in der Fehlerhistorie nach UTF-8 konvertiert.');
+        }
+        if ($jsonError !== JSON_ERROR_NONE || !is_array($data)) {
+            if (trim($json) === '') {
+                $reason = 'Das Gerät liefert eine leere Antwort.';
+            } elseif (preg_match('/^\\s*<(?:!doctype\\s+html|html\\b|head\\b|body\\b|form\\b)/i', $json)) {
+                $reason = 'Das Gerät liefert eine HTML-Seite statt JSON.';
+            } elseif ($jsonError === JSON_ERROR_NONE) {
+                $reason = 'Die JSON-Antwort ist kein API-Objekt.';
+            } else {
+                $details = [JSON_ERROR_SYNTAX => 'Syntaxfehler', JSON_ERROR_UTF8 => 'ungültige UTF-8-Zeichenkodierung', JSON_ERROR_CTRL_CHAR => 'ungültiges Steuerzeichen', JSON_ERROR_DEPTH => 'zu große Verschachtelung', JSON_ERROR_STATE_MISMATCH => 'fehlerhafte JSON-Struktur', JSON_ERROR_UTF16 => 'ungültige Unicode-Escapesequenz'];
+                $reason = 'Ungültige JSON-Antwort: ' . ($details[$jsonError] ?? 'JSON-Fehler ' . $jsonError) . '.';
+            }
+            return $this->httpFailure($reason . ' HTTP 200, ' . strlen($json) . ' Antwortbytes.', 203);
         }
         if (!isset($data['successful']) || !is_bool($data['successful'])) {
-            $this->SetStatus(204);
-            return false;
+            return $this->httpFailure('In der JSON-Antwort fehlt ein gültiges successful-Feld.', 204);
         }
         // A rejected/unsupported command still confirms a reachable Robonect.
         $this->SetStatus(102);
@@ -637,10 +664,35 @@ class RobonectWifiModul extends IPSModule
                 $unsupported[$command] = true;
                 $this->WriteAttributeString('UnsupportedCommands', json_encode($unsupported));
             }
-            $this->log('Robonect rejected command ' . explode('&', $command, 2)[0]);
-            return false;
+            $code = isset($data['error_code']) && is_numeric($data['error_code']) ? ' API-Code ' . (int) $data['error_code'] . '.' : '';
+            return $this->httpFailure('Robonect hat den API-Befehl abgelehnt.' . $code);
         }
         return $data;
+    }
+
+    protected function httpFailure(string $message, $status = null)
+    {
+        $this->lastHTTPFailure = $message;
+        if ($status !== null) $this->SetStatus($status);
+        // Diagnostics contain only error categories/codes and response length,
+        // never credentials or the contents of a returned login page.
+        $this->log($message);
+        return false;
+    }
+
+    protected function decodeLegacyHistoryText(string $json)
+    {
+        $validUTF8 = '[\xC2-\xDF][\x80-\xBF]'
+            . '|\xE0[\xA0-\xBF][\x80-\xBF]'
+            . '|[\xE1-\xEC\xEE-\xEF][\x80-\xBF]{2}'
+            . '|\xED[\x80-\x9F][\x80-\xBF]'
+            . '|\xF0[\x90-\xBF][\x80-\xBF]{2}'
+            . '|[\xF1-\xF3][\x80-\xBF]{3}'
+            . '|\xF4[\x80-\x8F][\x80-\xBF]{2}';
+        return preg_replace_callback('/(?:' . $validUTF8 . ')(*SKIP)(*F)|[\x80-\xFF]/', function ($match) {
+            $byte = ord($match[0]);
+            return chr(0xC0 | ($byte >> 6)) . chr(0x80 | ($byte & 0x3F));
+        }, $json);
     }
 
     public function RequestAction($Ident, $Value)
