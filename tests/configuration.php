@@ -64,7 +64,7 @@ test('Default config preserves all 35 original variables and creates no extras',
 test('Form is compact and keeps login/update properties',function(){
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);eq(count($form['elements']),5);
     foreach($form['elements'] as $element)eq($element['type'],'ExpansionPanel');
-    eq($form['elements'][0]['expanded'],true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration']??true,true);
+    eq($form['elements'][0]['expanded'],true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration'],false);
     $names=[];$walk=function($elements)use(&$walk,&$names){foreach($elements as $e){if(isset($e['name']))$names[]=$e['name'];if(isset($e['items']))$walk($e['items']);}};$walk($form['elements']);
     foreach(['IPAddress','Username','Password','MQTTTopic','HTTPUpdateTimer','UpdateTimer','MowingTime','DebugLog','VariableVisibility'] as $name)check(in_array($name,$names,true));
 });
@@ -73,8 +73,8 @@ test('IPv4 form validation accepts actual addresses and rejects invalid input',f
     foreach(['127.0.0.1','192.168.1.10','10.0.0.9'] as $ip)eq(preg_match('/'.$regex.'/D',$ip),1);
     foreach(['300.1.1.1','1x2x3x4','192.168.1','1.2.3.4evil'] as $ip)eq(preg_match('/'.$regex.'/D',$ip),0);
 });
-test('New known telemetry is offered checked without registering variables',function(){
-    $m=freshModule();$before=array_keys($m->types);$m->setMeasurement('mowerGpsSatellites',12);$row=rowByIdent(selectionRows($m),'mowerGpsSatellites');eq($row['Visible'],true);eq($row['Data'],'Daten empfangen');eq(array_keys($m->types),$before);
+test('New known telemetry is offered unchecked without registering variables',function(){
+    $m=freshModule();$before=array_keys($m->types);$m->setMeasurement('mowerGpsSatellites',12);$row=rowByIdent(selectionRows($m),'mowerGpsSatellites');eq($row['Visible'],false);check(!isset($row['Data'],$row['Variable']));eq(array_keys($m->types),$before);
 });
 test('Startup ApplyChanges cannot authorize newly discovered objects',function(){
     $m=freshModule();$m->setMeasurement('mowerErrorCode',9);$m->ApplyChanges();check(!isset($m->types['mowerErrorCode']));rowByIdent(selectionRows($m),'mowerErrorCode');
@@ -103,12 +103,12 @@ test('User-created child objects block deletion before other variables are remov
     try{$m->ApplyChanges();throw new LogicException('Deletion should fail');}catch(RuntimeException $e){check(strpos($e->getMessage(),'child objects')!==false);}
     check(isset($m->types['mowerTemperature'],$m->types['mowerHours']));
 });
-test('Unknown MQTT fields appear checked and remain strings after explicit registration',function(){
-    $m=freshModule();$m->ReceiveData(mqttPublish('mower/custom/new-temperature','23.5 C'));$rows=selectionRows($m);$extra=array_values(array_filter($rows,function($r){return strpos($r['Ident'],'extra_')===0;}));eq(count($extra),1);$row=$extra[0];eq($row['Visible'],true);check(!isset($m->types[$row['Ident']]));
-    $m->properties['VariableVisibility']=json_encode($rows);$m->ApplyChanges();eq($m->types[$row['Ident']],'string');eq($m->values[$row['Ident']],'23.5 C');$m->ReceiveData(mqttPublish('mower/custom/new-temperature','unknown'));eq($m->values[$row['Ident']],'unknown');
+test('Unknown MQTT fields appear unchecked and remain strings after explicit registration',function(){
+    $m=freshModule();$m->ReceiveData(mqttPublish('mower/custom/new-temperature','23.5 C'));$rows=selectionRows($m);$extra=array_values(array_filter($rows,function($r){return strpos($r['Ident'],'extra_')===0;}));eq(count($extra),1);$row=$extra[0];eq($row['Visible'],false);check(!isset($m->types[$row['Ident']]));
+    choose($m,$row['Ident'],true);$m->ApplyChanges();eq($m->types[$row['Ident']],'string');eq($m->values[$row['Ident']],'23.5 C');$m->ReceiveData(mqttPublish('mower/custom/new-temperature','unknown'));eq($m->values[$row['Ident']],'unknown');
 });
 test('New data never overrides an older unchecked choice',function(){
-    $m=freshModule();choose($m,'mowerBatterySoc',false);$m->ApplyChanges();$m->ReceiveData(mqttPublish('mower/custom/feature','yes'));$rows=selectionRows($m);eq(rowByIdent($rows,'mowerBatterySoc')['Visible'],false);eq($rows[count($rows)-1]['Visible'],true);check(!isset($m->types['mowerBatterySoc']));
+    $m=freshModule();choose($m,'mowerBatterySoc',false);$m->ApplyChanges();$m->ReceiveData(mqttPublish('mower/custom/feature','yes'));$rows=selectionRows($m);eq(rowByIdent($rows,'mowerBatterySoc')['Visible'],false);eq($rows[count($rows)-1]['Visible'],false);check(!isset($m->types['mowerBatterySoc']));
 });
 test('Additional scalar HTTP fields use existing requests only',function(){
     $m=freshModule();$m->responses['status']=['successful'=>true,'status'=>['status'=>17,'distance'=>42],'future'=>['enabled'=>true]];$m->Update();eq($m->commands,['status']);$rows=selectionRows($m);
@@ -136,19 +136,19 @@ test('Configuration defaults do not highlight an unrequested mowing action',func
     $m=freshModule();choose($m,'manualAction',false);$m->ApplyChanges();$m->SetBuffer('Measurement_manualAction','');choose($m,'manualAction',true);$m->ApplyChanges();eq($m->values['manualAction'],-1);
 });
 test('Repeated unknown telemetry does not rewrite a registered variable',function(){
-    $m=freshModule();$m->ReceiveData(mqttPublish('mower/custom/first','a'));$m->properties['VariableVisibility']=json_encode(selectionRows($m));$m->ApplyChanges();$calls=$m->setValueCalls;$m->ReceiveData(mqttPublish('mower/custom/first','a'));eq($m->setValueCalls,$calls);
+    $m=freshModule();$m->ReceiveData(mqttPublish('mower/custom/first','a'));$rows=selectionRows($m);$extra=end($rows)['Ident'];choose($m,$extra,true);$m->ApplyChanges();check(isset($m->types[$extra]));$calls=$m->setValueCalls;$m->ReceiveData(mqttPublish('mower/custom/first','a'));eq($m->setValueCalls,$calls);
 });
 test('Native Apply saves checkboxes and creates GPS and raw variables through ApplyChanges', function () {
     $m=freshModule();$m->setMeasurement('mowerGpsSatellites',11);
     $m->ReceiveData(mqttPublish('mower/custom/first','42'));
     $rows=nativeChecklistRows($m);
     $extra=array_values(array_filter($rows,function($row){return strpos($row['Ident'],'extra_')===0;}))[0]['Ident'];
-    foreach($rows as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
+    foreach($rows as &$row){if($row['Ident']==='mowerHours')$row['Visible']=false;if(in_array($row['Ident'],['mowerGpsSatellites',$extra],true))$row['Visible']=true;}unset($row);
     check(!isset($m->types['mowerGpsSatellites'],$m->types[$extra]));
     applyNativeChecklist($m,$rows);
     eq($m->values['mowerGpsSatellites'],11);eq($m->values[$extra],'42');check(!isset($m->types['mowerHours']));
     foreach(json_decode($m->properties['VariableVisibility'],true) as $saved)eq(array_keys($saved),['Ident','Visible']);
-    eq($m->formUpdates,[]);eq(rowByIdent(selectionRows($m),'mowerGpsSatellites')['Variable'],'Angelegt');
+    eq($m->formUpdates,[]);check(isset($m->types['mowerGpsSatellites']));
     $rows=nativeChecklistRows($m);
     foreach($rows as &$row){if($row['Ident']==='mowerGpsSatellites')$row['Visible']=false;if($row['Ident']==='mowerHours')$row['Visible']=true;}unset($row);
     applyNativeChecklist($m,$rows);
@@ -161,7 +161,7 @@ test('Native saved rows stay aligned with newly appended discoveries', function 
     $m->ReceiveData(mqttPublish('mower/custom/second','second'));
     $rows=nativeChecklistRows($m);
     eq(array_slice(array_column($rows,'Ident'),0,count($saved)),array_column($saved,'Ident'));
-    eq(rowByIdent($rows,$first)['Visible'],false);$last=end($rows);eq($last['Visible'],true);
+    eq(rowByIdent($rows,$first)['Visible'],false);$last=end($rows);eq($last['Visible'],false);
     check(!isset($m->types[$last['Ident']]));eq(count(array_unique(array_column($rows,'Ident'))),count($rows));
 });
 test('Unapplied checkbox edits cannot create variables or change persisted choices', function () {
@@ -188,7 +188,7 @@ test('Known alarms get descriptions and unknown extras explicitly retain their r
 });
 test('Form reports installed build and all manual requests have a visible response', function () {
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
-    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.11')!==false);
+    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.12')!==false);
     foreach(formButtons($form['elements']) as $button){$script=is_array($button['onClick'])?implode("\n",$button['onClick']):$button['onClick'];check(strpos($script,'echo ')!==false);}
 });
 test('Full refresh leaves open editable forms and pending selections untouched',function(){
@@ -202,8 +202,8 @@ test('Full refresh leaves open editable forms and pending selections untouched',
     eq(rowByIdent($displayed,'mowerHours')['Visible'],false);
     $rows=selectionRows($m); // Newly discovered candidates appear only on reopening.
     $extra='extra_'.substr(sha1('HTTP status: status.distance'),0,20);
-    eq(rowByIdent($rows,$extra)['Visible'],true);eq(rowByIdent($rows,$extra)['Variable'],'Nicht angelegt');
-    eq(rowByIdent($rows,'mowerGpsSatellites')['Visible'],true);
+    eq(rowByIdent($rows,$extra)['Visible'],false);check(!isset($m->types[$extra]));
+    eq(rowByIdent($rows,'mowerGpsSatellites')['Visible'],false);
     eq($m->properties['VariableVisibility'],$before);eq($GLOBALS['maintainCalls'],$calls);eq(count($m->types),35);
     $m->ApplyChanges();eq(count($m->types),35);
 });
@@ -221,15 +221,15 @@ function seedLegacyAlarms($m,$enabled=true) {
 }
 test('HTTP alarms offer one aggregate without creating objects on reception or restart',function(){
     $m=freshModule();$m->responses=['status'=>['successful'=>true,'status'=>['status'=>2]],'health'=>['successful'=>true,'health'=>['alarm'=>['temperaturemax'=>true,'voltagebattmin'=>true,'humiditymax'=>false]]]];
-    $m->Update();$rows=selectionRows($m);eq(count($rows),36);eq(rowByIdent($rows,'mowerHealthAlarms')['Visible'],true);eq(count($m->types),35);
+    $m->Update();$rows=selectionRows($m);eq(count($rows),36);eq(rowByIdent($rows,'mowerHealthAlarms')['Visible'],false);eq(count($m->types),35);
     $m->ApplyChanges();eq(count($m->types),35);
-    applyNativeChecklist($m,nativeChecklistRows($m));eq(count($m->types),36);
+    choose($m,'mowerHealthAlarms',true);applyNativeChecklist($m,nativeChecklistRows($m));eq(count($m->types),36);
     eq($m->values['mowerHealthAlarms'],'Temperatur zu hoch; Akkuspannung zu niedrig');
     $calls=$m->setValueCalls;$m->Update();eq($m->setValueCalls,$calls);
 });
 test('MQTT partial alarm updates preserve other flags and clear the final active alarm',function(){
     $m=freshModule();$m->ReceiveData(mqttPublish('mower/health/alarm/temperaturemax','true'));
-    applyNativeChecklist($m,nativeChecklistRows($m));eq($m->values['mowerHealthAlarms'],'Temperatur zu hoch');
+    choose($m,'mowerHealthAlarms',true);applyNativeChecklist($m,nativeChecklistRows($m));eq($m->values['mowerHealthAlarms'],'Temperatur zu hoch');
     $m->ReceiveData(mqttPublish('mower/health/alarm/humiditymax','1'));eq($m->values['mowerHealthAlarms'],'Luftfeuchtigkeit zu hoch; Temperatur zu hoch');
     $m->ReceiveData(mqttPublish('mower/health/alarm/temperaturemax','false'));eq($m->values['mowerHealthAlarms'],'Luftfeuchtigkeit zu hoch');
     $m->ReceiveData(mqttPublish('mower/health/alarm/humiditymax','0'));eq($m->values['mowerHealthAlarms'],'Keine aktiven Gerätealarme');
@@ -239,7 +239,7 @@ test('MQTT partial alarm updates preserve other flags and clear the final active
     eq($m->setValueCalls,$before);eq($m->attributes['HealthAlarmStates'],$states);eq($m->commands,[]);
 });
 test('Unknown alarm keys remain visible in aggregate and unchecked aggregate stays deleted',function(){
-    $m=freshModule();$m->ReceiveData(mqttPublish('mower/health/alarm/new_sensor','true'));applyNativeChecklist($m,nativeChecklistRows($m));
+    $m=freshModule();$m->ReceiveData(mqttPublish('mower/health/alarm/new_sensor','true'));choose($m,'mowerHealthAlarms',true);applyNativeChecklist($m,nativeChecklistRows($m));
     eq($m->values['mowerHealthAlarms'],'Zusätzlicher Gerätealarm: new_sensor');
     choose($m,'mowerHealthAlarms',false);$m->ApplyChanges();
     $m->ReceiveData(mqttPublish('mower/health/alarm/temperaturemax','true'));$m->ApplyChanges();
@@ -254,7 +254,7 @@ test('Approved nine legacy alarm objects consolidate through SDK without changin
     $form=json_decode($m->GetConfigurationForm(),true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration'],false);
     $rows=nativeChecklistRows($m);foreach($rows as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
     applyNativeChecklist($m,$rows);check(!isset($m->types['mowerHours']));eq(count($m->types),35);
-    $form=json_decode($m->GetConfigurationForm(),true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration']??true,true);
+    $form=json_decode($m->GetConfigurationForm(),true);eq($form['elements'][2]['items'][1]['loadValuesFromConfiguration'],false);
     $m->ApplyChanges();eq(count($m->types),35);eq($m->values['mowerHealthAlarms'],'Temperatur zu hoch');
 });
 test('Disabled legacy alarm choices migrate disabled and explicit aggregate choice wins',function(){
@@ -268,10 +268,10 @@ test('Legacy alarm consolidation protects user children before any SDK variable 
     try{$m->ApplyChanges();throw new LogicException('Deletion should fail');}catch(RuntimeException $e){check(strpos($e->getMessage(),'child objects')!==false);}
     eq($GLOBALS['maintainCalls'],$before);foreach($ids as $id)check(isset($m->types[$id]));check(isset($m->types['mowerHours']));
 });
-test('Data column distinguishes existence from a recorded receipt even for an unchanged zero',function(){
-    $m=freshModule();eq(rowByIdent(selectionRows($m),'mowerSubstatus')['Data'],'Empfang nicht erfasst');
+test('Checklist contains configuration fields only and unchanged zero telemetry is not written',function(){
+    $m=freshModule();$row=rowByIdent(selectionRows($m),'mowerSubstatus');eq(array_keys($row),['Ident','Name','Description','Group','Visible']);
     $m->ReceiveData(mqttPublish('mower/mower/substatus','0'));
-    eq(rowByIdent(selectionRows($m),'mowerSubstatus')['Data'],'Daten empfangen');
+    check(!isset(rowByIdent(selectionRows($m),'mowerSubstatus')['Data']));
     eq($m->values['mowerSubstatus'],0);check(!in_array(['mowerSubstatus',0],$m->setValueCalls,true));
 });
 test('Background MQTT and HTTP discovery plus Apply never rewrite editable configuration fields',function(){
@@ -288,5 +288,89 @@ test('Background MQTT and HTTP discovery plus Apply never rewrite editable confi
     $m->RefreshAllValues(json_encode([['Ident'=>'mowerHours','Visible'=>false]]));
     eq($m->properties,$saved);eq($m->formUpdates,[]);check(isset($m->types['mowerHours']));
     check(count(selectionRows($m))>count($rows));eq($m->properties,$saved);eq($m->formUpdates,[]);
+});
+function seedLegacyExtras($m,$sources) {
+    $discovered=json_decode($m->attributes['DiscoveredValues'],true)?:[];
+    $available=json_decode($m->attributes['AvailableValues'],true)?:[];$rows=selectionRows($m);$ids=[];
+    foreach($sources as $source=>$value){
+        $id='extra_'.substr(sha1($source),0,20);$ids[$source]=$id;
+        $discovered[$id]=['name'=>$source,'value'=>$value];$available[$id]=true;
+        $rows[]=['Ident'=>$id,'Name'=>$source,'Visible'=>true,'Variable'=>'Nicht angelegt','Data'=>'Daten empfangen','Description'=>'Old metadata','Group'=>'Zusatzwerte'];
+        $m->RegisterVariableString($id,$source,'',200);$m->values[$id]=$value;
+    }
+    $m->attributes['DiscoveredValues']=json_encode($discovered);$m->attributes['AvailableValues']=json_encode($available);
+    $m->properties['VariableVisibility']=json_encode($rows);return $ids;
+}
+function timerChannelSources(){
+    $sources=[];for($channel=1;$channel<=14;$channel++)foreach(['enable'=>'true','weekdays'=>'62','start'=>'08:00','end'=>'18:00'] as $field=>$value)$sources['MQTT /mower/timer/ch'.$channel.'/'.$field]=$value;
+    return $sources;
+}
+test('All 56 timer channel fields are ignored by discovery and cannot be enabled by another checkbox edit',function(){
+    $m=freshModule();foreach(timerChannelSources() as $source=>$value)$m->ReceiveData(mqttPublish('mower'.substr($source,5),$value));
+    eq(count(selectionRows($m)),35);eq($m->attributes['DiscoveredValues'],'{}');
+    choose($m,'mowerHours',false);$m->ApplyChanges();eq(count($m->types),34);eq($m->commands,[]);eq($m->formUpdates,[]);
+});
+test('Existing timer channel variables are retired through the SDK while the weekly schedule and unrelated extras survive',function(){
+    $m=freshModule();$schedule=$GLOBALS['schedule'];$parent=$GLOBALS['eventParents'][100];$core=array_keys($m->types);
+    $ids=seedLegacyExtras($m,timerChannelSources()+['MQTT /weather/service'=>'true']);$saved=$m->properties['VariableVisibility'];
+    $m->ApplyChanges();eq($GLOBALS['schedule'],$schedule);eq($GLOBALS['eventParents'][100],$parent);eq($GLOBALS['scheduleWrites'],[]);
+    foreach(timerChannelSources() as $source=>$value){$id=$ids[$source];check(!isset($m->types[$id]));check(in_array([$id,3,false],$GLOBALS['maintainCalls'],true));}
+    foreach($core as $id)check(isset($m->types[$id]));check(isset($m->types[$ids['MQTT /weather/service']]));
+    eq(count(selectionRows($m)),36);eq($m->properties['VariableVisibility'],$saved);eq($m->formUpdates,[]);eq($m->commands,[]);
+    $m->ApplyChanges();eq(count($m->types),36);
+});
+test('Timer retirement can use old stored metadata without a discovery cache and validates module-owned identifiers',function(){
+    $m=freshModule();$ids=seedLegacyExtras($m,['MQTT /mower/timer/ch7/start'=>'08:00']);$id=reset($ids);
+    $m->attributes['DiscoveredValues']='{}';$m->RegisterVariableString('custom_timer','User timer','',200);
+    $rows=json_decode($m->properties['VariableVisibility'],true);$rows[]=['Ident'=>'custom_timer','Name'=>'MQTT /mower/timer/ch8/start','Visible'=>true];$m->properties['VariableVisibility']=json_encode($rows);
+    $m->ApplyChanges();check(!isset($m->types[$id]));check(isset($m->types['custom_timer']));
+});
+test('Timer retirement checks user children before changing any managed variables',function(){
+    $m=freshModule();$ids=seedLegacyExtras($m,['MQTT /mower/timer/ch7/start'=>'08:00']);$id=reset($ids);$GLOBALS['eventParents'][200]=$id;
+    choose($m,'mowerHours',false);$calls=$GLOBALS['maintainCalls'];
+    try{$m->ApplyChanges();throw new LogicException('Child protection missing');}catch(RuntimeException $e){check(strpos($e->getMessage(),'child objects')!==false);}
+    eq($GLOBALS['maintainCalls'],$calls);check(isset($m->types[$id],$m->types['mowerHours']));
+});
+test('Known MQTT name and serial topics update the existing native variables without raw duplicates',function(){
+    $m=freshModule();$before=$GLOBALS['maintainCalls'];$m->ReceiveData(mqttPublish('mower/device/name','Robi'));$m->ReceiveData(mqttPublish('mower/device/serial','12345'));
+    eq($m->values['mowerName'],'Robi');eq($m->values['mowerSerial'],'12345');eq(count(selectionRows($m)),35);eq($GLOBALS['maintainCalls'],$before);
+});
+test('MQTT and HTTP distance, prevention and next start share the existing HTTP extra identities',function(){
+    $m=freshModule();$fields=['mower/distance'=>'status.distance','mower/prevent'=>'status.prevent','mower/timer/next/date'=>'timer.next.date','mower/timer/next/time'=>'timer.next.time'];
+    foreach($fields as $topic=>$path){$m->ReceiveData(mqttPublish('mower/'.$topic,'42'));$id='extra_'.substr(sha1('HTTP status: '.$path),0,20);eq(rowByIdent(selectionRows($m),$id)['Visible'],false);choose($m,$id,true);$m->ApplyChanges();eq($m->values[$id],'42');}
+    eq(count(selectionRows($m)),39);$calls=$m->setValueCalls;
+    foreach($fields as $topic=>$path)$m->ReceiveData(mqttPublish('mower/'.$topic,'42'));
+    eq($m->setValueCalls,$calls);eq($m->commands,[]);
+    $m->responses['status']=['successful'=>true,'status'=>['status'=>17,'distance'=>43,'prevent'=>43],'timer'=>['next'=>['date'=>'43','time'=>'43']]];$m->Update();eq(count(selectionRows($m)),39);
+});
+test('Retiring duplicate MQTT extras preserves canonical object identities and selected optional data',function(){
+    $m=freshModule();$ids=seedLegacyExtras($m,['MQTT /device/name'=>'Robi','MQTT /mower/distance'=>'42']);$core=array_keys($m->types);$core=array_slice($core,0,35);
+    $m->ApplyChanges();foreach($ids as $id)check(!isset($m->types[$id]));foreach($core as $id)check(isset($m->types[$id]));eq($m->values['mowerName'],'Robi');
+    $distance='extra_'.substr(sha1('HTTP status: status.distance'),0,20);eq($m->values[$distance],'42');eq(count(selectionRows($m)),36);
+    $m->ApplyChanges();eq($m->values[$distance],'42');eq(count($m->types),36);
+});
+test('An unchecked obsolete alias never disables the original native variable',function(){
+    $m=freshModule();$ids=seedLegacyExtras($m,['MQTT /device/name'=>'Robi']);$id=reset($ids);
+    $m->properties['VariableVisibility']=json_encode([['Ident'=>$id,'Name'=>'MQTT /device/name','Visible'=>false]]);
+    $m->ApplyChanges();check(isset($m->types['mowerName']));check(!isset($m->types[$id]));
+});
+test('Stored display metadata cannot override the canonical checkbox list or create runtime form changes',function(){
+    $m=freshModule();$m->setMeasurement('mowerErrorCode',80);
+    $m->properties['VariableVisibility']=json_encode([
+        ['Ident'=>'mowerErrorCode','Visible'=>true,'Name'=>'Obsolete name','Variable'=>'Nicht angelegt','Data'=>'Old','Group'=>'Old','Description'=>'Old'],
+        ['Ident'=>'mowerTemperature','Visible'=>false,'Variable'=>'Angelegt']
+    ]);
+    $saved=$m->properties['VariableVisibility'];$m->ApplyChanges();eq($m->values['mowerErrorCode'],80);check(!isset($m->types['mowerTemperature']));
+    $rows=nativeChecklistRows($m);$row=rowByIdent($rows,'mowerErrorCode');eq($row['Name'],'Aktueller Fehlercode');eq($row['Visible'],true);check(!isset($row['Variable'],$row['Data']));
+    eq(rowByIdent($rows,'mowerTemperature')['Visible'],false);eq($m->properties['VariableVisibility'],$saved);eq($m->formUpdates,[]);
+    applyNativeChecklist($m,$rows);eq($m->formUpdates,[]);eq($m->values['mowerErrorCode'],80);
+});
+test('Applying an unrelated checkbox cannot silently activate newly discovered optional variables',function(){
+    $m=freshModule();$m->ReceiveData(mqttPublish('mower/custom/new','42'));$m->setMeasurement('mowerGpsSatellites',11);
+    $rows=nativeChecklistRows($m);foreach($rows as &$row)if($row['Ident']==='mowerHours')$row['Visible']=false;unset($row);
+    applyNativeChecklist($m,$rows);eq(count($m->types),34);check(!isset($m->types['mowerGpsSatellites']));
+    $rows=nativeChecklistRows($m);foreach($rows as &$row)if($row['Ident']==='mowerGpsSatellites')$row['Visible']=true;unset($row);
+    applyNativeChecklist($m,$rows);eq($m->values['mowerGpsSatellites'],11);eq(count($m->types),35);
+    $m->ReceiveData(mqttPublish('mower/custom/another','43'));$m->ApplyChanges();eq(count($m->types),35);
 });
 finishTests();

@@ -4,53 +4,61 @@ Primäres Ziel: **Husqvarna Automower 310, Robonect V1.6 (Release 16.04.2026), I
 
 ## Kompakte Konfiguration und Checkliste
 
-Die Konfiguration ist in fünf aufklappbare Bereiche gegliedert: Verbindung, Aktualisierung/Vorgabewerte, aktive Variablen, Diagnose und Informationen/Unterstützung. Zugangsdaten und die bisherigen Einstellungen bleiben erhalten.
+Die fünf aufklappbaren Bereiche enthalten Verbindung, Aktualisierung/Vorgabewerte, aktive Variablen, Diagnose und Informationen/Unterstützung. Die Checkliste zeigt nur **Checkbox, Bereich, Wert und Beschreibung**; die missverständlichen Spalten „Angelegt/Nicht angelegt“ und „Daten“ sind entfernt.
 
-Die Checkliste bestimmt, welche Statusvariablen angelegt werden:
+- Die 35 ursprünglichen Variablen behalten Idents, Typen, Profile und ihre vorhandenen Objekte. Ohne gespeicherte Auswahl bleibt deren ursprüngliche Vorgabe aktiv.
+- **Neue Zusatzwerte erscheinen abgewählt.** Erst eine ausdrückliche Checkboxauswahl und das normale Symcon-Übernehmen erlauben ihre Anlage. Bestehende gespeicherte Auswahlen werden weiter berücksichtigt.
+- Beim Übernehmen verwaltet `$this->MaintainVariable(..., true/false)` die Anlage und das tatsächliche Löschen. Erneutes Aktivieren einer gelöschten Variable ergibt eine neue Objekt-ID. Referenzen werden nicht automatisch umgestellt.
+- Datenempfang, Formularöffnung und Neustart ohne gespeicherte neue Auswahl erzeugen keine Zusatzvariablen. Ein bewusst abgewählter Eintrag bleibt abgewählt.
+- Vor Löschungen werden eigene Unterobjekte geprüft. Der modulinterne Wochenplan bleibt beim Abwählen seiner Statusvariable erhalten und wird zur Instanz verschoben; beim erneuten Aktivieren wird er wieder zugeordnet.
 
-- Die 35 bisherigen Variablen behalten ihre bisherigen Idents, Typen und Profile. Ohne gespeicherte Auswahl wird keine davon entfernt.
-- Neu empfangene Werte erscheinen beim erneuten Öffnen der Konfiguration **vorausgewählt** in der Checkliste. Das Öffnen der Liste verändert keine Variablen und speichert keine Auswahl.
-- Erst die gespeicherte Auswahl berechtigt die Anlage: Ein normaler Hintergrundabruf, ein Modulneustart oder `ApplyChanges()` ohne gespeicherten Haken legt keine neue Zusatzvariable an.
-- Beim Übernehmen werden ausgewählte Variablen über `$this->MaintainVariable(..., true)` angelegt/beibehalten. Abgewählte werden über `$this->MaintainVariable(..., false)` tatsächlich gelöscht, wie vom Nutzer gewünscht. Beim späteren Aktivieren entsteht eine neue ID; bestehende Referenzen werden dadurch nicht automatisch umgestellt.
-- Eine bewusst abgewählte Variable bleibt abgewählt, auch wenn neue Daten dafür eintreffen. Hintergrundaktualisierung und Bedienfunktionen funktionieren unabhängig davon, welche Anzeigevariablen vorhanden sind.
-- Variablen mit eigenen Unterobjekten werden vor dem Löschen abgefangen. Der modulinterne Wochenplan wird vor dem Entfernen seiner Statusvariable erhalten, zur Instanz verschoben und seine lokale Schaltaktion deaktiviert. Beim erneuten Aktivieren wird er wieder zugeordnet.
+Unbekannte skalare Werte aus den ohnehin abgefragten Antworten und aus MQTT bleiben optionale **String-Rohwerte**. Einheit und Bedeutung werden nicht geraten. Zugangsdaten, Steuertopics, Historien mit numerischen Indizes und die per MQTT gemeldete Konfiguration einzelner Timerkanäle werden nicht als neue Variablen angeboten. Die Erkennung fordert keine weiteren Daten an und sendet keine MQTT-Kommandos.
 
-Zusätzlich zu den bekannten Variablen können bisher nicht zugeordnete skalare Daten aus den ohnehin abgefragten Antworten `status`, `health`, `gps` und aus MQTT angeboten werden. Unbekannte Werte bleiben als **String-Rohwerte** erhalten; Einheit und Bedeutung werden nicht geraten. Der Ident wird stabil aus Quelle und Pfad abgeleitet. Listen/Historien mit numerischen Indizes, Zugangsdatenfelder und MQTT-Steuertopics werden nicht in einzelne neue Variablen umgewandelt. Für die Erkennung werden keine zusätzlichen API-Befehle aufgerufen.
+## Gespeicherte Auswahl und native Übernahme
 
-## Sichtbarkeit und MQTT-/HTTP-Abdeckung
+Die vom Nutzer gelieferte Eigenschaft `VariableVisibility` enthält 111 aktivierte Zeilen mitsamt alten Feldern `Name`, `Group`, `Description`, `Variable` und `Data`. Darunter stehen empfangene Fehlerwerte weiterhin auf „Nicht angelegt“. Beim nativen Laden konnten diese gespeicherten Zeilentexte die neu berechnete Darstellung überschreiben.
 
-Die 35 bisherigen Definitionen stehen immer in der Checkliste. Die fünf bekannten Zusatzdefinitionen werden derzeit erst nach gültigem Datenempfang, bei vorhandenem Objekt oder bei gespeicherter Auswahl gezeigt. Weitere Rohwerte erscheinen nach ihrer Erkennung über MQTT beziehungsweise die unterstützten HTTP-Antworten. Fehlende Einträge beweisen daher weder fehlende Geräteunterstützung noch das Ausbleiben sämtlicher Daten. Für noch nicht angebundene Datenbereiche wie `battery`, `hour`, `motor` und `wire` gibt es noch keinen vollständigen Variablenkatalog.
+Ab **Build 12** liefert das Backend unter Symcon >= 6 die Zeilen mit `loadValuesFromConfiguration: false` und führt die gespeicherten Haken selbst **anhand des Idents** zusammen. Namen und Beschreibungen stammen aus den aktuellen Definitionen. Die Standardanbindung für das **Speichern** bleibt bestehen: Checkboxen werden ausschließlich über Symcons normales „Änderungen übernehmen“ gespeichert. Die Konfiguration definiert weiterhin nur `Ident` und `Visible` als zu speichernde Spalten. Auch vollständige ältere Zeilen werden beim Lesen unterstützt. Es gibt keine eigene Speicherfunktion und keinen zusätzlichen Übernehmen-Knopf.
 
-Die geöffnete Checkliste bleibt während MQTT-/HTTP-Abrufen und nach `ApplyChanges()` unverändert. Neu erkannte Felder und der aktuelle Anlagenstatus erscheinen beim erneuten Öffnen der Konfiguration. Das frühere Ersetzen der gesamten editierbaren Liste über `UpdateFormField(..., 'values', ...)` wurde in Build 9 entfernt: Es betraf sämtliche offenen Konfigurationsfenster und konnte ungespeicherte Eingaben sowie den Änderungszustand der Liste beeinflussen. Es gibt keine automatische Eigenschaftsspeicherung und keinen zusätzlichen Übernehmen-Knopf.
+Formularöffnung, Hintergrundabrufe und Gesamtabrufe speichern die Eigenschaft nicht und senden keine `UpdateFormField`-Änderungen. Ungespeicherte Eingaben anderer Konfigurationsfenster werden nicht ersetzt. Neu erkannte Felder erscheinen beim erneuten Öffnen abgewählt. Das native Verhalten unter Symcon 9.0 muss weiterhin am Zielsystem geprüft werden.
 
-MQTT und HTTP ergänzen sich im aktuellen Modul:
+## Timer und doppelt angebotene MQTT-Werte
+
+Die 56 Einzelfelder der 14 Timerkanäle (`enable`, `weekdays`, `start`, `end`) aus der gelieferten Auswahl gehören zum vorhandenen Wochenplan. Alle `MQTT /mower/timer/chN/*`- und `/timer/chN/*`-Quellen werden deshalb aus der automatischen Erkennung herausgenommen. Beim Übernehmen werden bereits angelegte, eindeutig über Quelle und Hash-Ident erkannte Timer-Einzelvariablen über die SDK-Verwaltung entfernt. Der vorhandene Wochenplan wird dabei nicht verändert oder neu übertragen. Referenzen auf entfernte doppelte Zusatzvariablen müssen bei Bedarf auf den gemeinsamen Eintrag umgestellt werden. Eigene Unterobjekte verhindern die Bereinigung vor jeder Variablenänderung.
+
+Bekannte MQTT-Quellen werden ihren vorhandenen Einträgen zugeordnet: `device/name`, `device/serial`, `mower/prevent`, `mower/home`, `mower/distance` und Datum/Uhrzeit des nächsten Timerstarts. Für optionale Werte bleiben die bisherigen HTTP-Idents erhalten. Bereits angelegte doppelte MQTT-Objekte werden beim Übernehmen entfernt; freigegebene optionale Werte und verfügbare Daten werden dem gemeinsamen Eintrag zugeordnet. Explizite Auswahlen des gemeinsamen Eintrags haben Vorrang. Eine abgewählte alte Kopie deaktiviert keine ursprüngliche Kernvariable.
+
+Die lokale Wiederholung mit der tatsächlich gelieferten Auswahl ergibt **111 gespeicherte Zeilen → 49 Checkboxen**: 56 Timer-Einzelfelder und sechs doppelte MQTT-Einträge entfallen. Alle 35 ursprünglichen Idents bleiben erhalten; es gibt keine Eigenschafts- oder Formularschreibzugriffe. Diese Prüfung nutzt das SDK-Testdouble, keine echte Symcon-Instanz. Der Ergebnisbericht liegt außerhalb des Repositorys unter `/workspace/.setup/api-review/user-selection-replay.txt`.
+
+## MQTT-/HTTP-Abdeckung
+
+Die ursprünglichen Definitionen stehen immer in der Checkliste. Die fünf bekannten Zusatzdefinitionen und weitere Rohwerte erscheinen nach gültigem Datenempfang, bei vorhandenen Objekten oder gespeicherter Auswahl. Noch nicht angebundene Bereiche wie `battery`, `hour`, `motor` und `wire` bilden keinen vollständigen Variablenkatalog.
 
 | Daten / Funktion | Umsetzung |
 | --- | --- |
-| Mäherstatus, Modus, Akkustand, Spannungen, Klima, Messerwerte, GPS, aktueller Fehler, nächster Timerstart | Über entsprechende MQTT-Topics, soweit vom Gerät gesendet; viele dieser Werte zusätzlich über HTTP. |
-| Status-/Substatus-Klartext und MQTT-Verbindungsstatus | Im Modul über MQTT bzw. daraus abgeleitet. |
-| Name, Seriennummer und Geräteuhr | Im Modul aus den HTTP-Antworten. |
-| Zusammengefasste Gerätealarme | `health.alarm` aus HTTP und einzelne MQTT-Topics `/health/alarm/<Schlüssel>` aktualisieren dieselbe Zusammenfassung. |
-| Hintergrundintervall | Fragt `status` ab; nur bei Status 2/3/4/5 zusätzlich `health` und bei fehlenden frischen MQTT-Koordinaten `gps`. Keine Fehlerhistorie. |
-| Vollständige Fehlerhistorie und Fehlerzähler | Über `error`, manuell über „Alle Werte aktualisieren“ oder die vorhandene Skriptfunktion. |
+| Status, Modus, Akkustand, Spannungen, Klima, Messerwerte, GPS, aktueller Fehler, nächster Timerstart | Passende MQTT-Topics; viele zusätzlich über HTTP. |
+| Name und Seriennummer | Bestehende Variablen aus HTTP sowie `device/name` und `device/serial`. |
+| Entfernung, Startverhinderung und nächster Timerstart als Datum/Uhrzeit | Gemeinsame HTTP-/MQTT-Einträge. |
+| Substatus und Substatus-Klartext | Ausschließlich MQTT; Beschreibungen nennen die Topics. |
+| Gerätealarme | Eine Zusammenfassung aus `health.alarm` und MQTT `/health/alarm/<Schlüssel>`. |
+| Hintergrundintervall | `status`; nur bei Status 2/3/4/5 zusätzlich `health` und bei fehlenden frischen MQTT-Koordinaten `gps`. Keine Fehlerhistorie. |
+| Fehlerhistorie und Fehlerzähler | HTTP `error`, über den Gesamtabruf oder die bestehende Skriptfunktion. |
 
-Welche Topics die konkrete Robonect-V1.6-Konfiguration tatsächlich sendet, ist ohne Brokerdaten nicht vollständig geprüft. Bei zuverlässigem MQTT ist ein längeres HTTP-Intervall, etwa 120–300 Sekunden, ein möglicher Ausgangspunkt. Ohne HTTP-Hintergrundupdates aktualisieren sich ausschließlich per HTTP angebundene Werte erst beim manuellen Abruf. Der Empfang von MQTT ist unabhängig vom HTTP-Timer.
+MQTT empfängt unabhängig vom HTTP-Timer. Ohne HTTP-Hintergrundabrufe werden ausschließlich darüber angebundene Werte erst manuell aktualisiert. Welche Topics das konkrete Gerät tatsächlich sendet, ist nur teilweise anhand der gelieferten Daten bestätigt.
 
 ## Manuelle Aktualisierung und sichtbarer Teststand
 
-Im Formular steht nur noch „Alle Werte aktualisieren“ mit sichtbarer Rückmeldung bereit. Die separaten Knöpfe „Verbindung testen“ und „Fehlerliste aktualisieren“ wurden auf Wunsch entfernt. Die entsprechenden PHP-Funktionen bleiben für bestehende Skripte verfügbar. Die manuelle Gesamtaktualisierung fragt ausdrücklich `status`, `health`, `gps` und `error` ab, auch bei schlafendem, abgeschaltetem oder unbekanntem Zustand. Sie kann den Mäher aufwecken. Eine fehlgeschlagene Statusabfrage verhindert die übrigen Leseversuche nicht. Auch frische MQTT-GPS-Daten und früher zwischengespeicherte Ablehnungen optionaler Befehle verhindern diese manuellen Abfragen nicht; eine neue bestätigte Ablehnung wird für den Hintergrundbetrieb wieder zwischengespeichert. Rückmeldungen zeigen getrennt, welche Abfrage erfolgreich war, nicht unterstützt wird oder fehlgeschlagen ist, einschließlich der konkreten HTTP-/JSON-/API-Diagnose für GPS und Health. Eine bereits laufende Aktualisierung bleibt gegen parallele Abrufe geschützt. Der normale Timer-Aufruf `Update()` fragt weiterhin den Status ab, erlaubt automatische Details aber ausschließlich bei Status 2/3/4/5. Insbesondere Status 1 (geparkt) erlaubt keine GPS-Abfrage mehr. Frische MQTT-GPS-Daten vermeiden zusätzliche GPS-Abrufe auch während der Aktivität. Die Änderung der Automatik ist noch am Zielgerät zu bestätigen.
+„Alle Werte aktualisieren“ fragt ausdrücklich `status`, `health`, `gps` und `error` ab, auch bei geparktem oder schlafendem Mäher. Das kann aufwecken. Fehlerhafte Statusantworten verhindern die übrigen Leseversuche nicht. Ein Gesamtabruf legt keine neuen Variablen an und sendet keine Steuerbefehle oder Wochenpläne. „Alle Werte“ bezeichnet die bereits unterstützten Istwerte, nicht sämtliche möglichen API-Befehle.
 
-Die Gesamtaktualisierung legt keine neuen Variablen an und überträgt keine Steuerbefehle oder Wochenpläne. „Alle Werte“ bezieht sich auf die bereits unterstützten Istwerte, nicht auf sämtliche zusätzlichen API-Kommandos wie `battery`, `motor` oder `hour`.
+Die tatsächliche generierte Skriptfunktion verlangt **zwei Parameter**, obwohl die PHP-Methode für den zweiten einen Standardwert hat. Build 12 übergibt ihn ausdrücklich:
 
-Die Checkboxen werden ausschließlich über Symcons normales **„Änderungen übernehmen“** gespeichert. Die Liste nutzt die reguläre Eigenschaftsanbindung mit dem Standard `loadValuesFromConfiguration: true`. Nur während der Alarmumstellung liefert das Backend bis zum nächsten normalen Speichern die zusammengeführten Zeilen mit `loadValuesFromConfiguration: false`, damit alte Zeilenindizes keine anderen Checkboxen überschreiben. Nur die Spalten `Ident` und `Visible` werden gespeichert; Namen, Beschreibungen und Daten-/Anlagenstatus werden dynamisch ergänzt. Die Reihenfolge der gespeicherten Zeilen bleibt erhalten, damit Symcons Zusammenführen nach Zeilenindex keine Haken anderen Idents zuordnet. Es gibt keinen zusätzlichen Übernehmen-Knopf, keine eigene Speicherfunktion und keine sofortige Anlage beim Umschalten. Nach dem regulären Speichern übernimmt `ApplyChanges()` Anlage/Löschung über die SDK-Methoden und liefert beim nächsten Öffnen den aktuellen Status für die Spalte **„Variable“**. Abbrechen, bloßer Empfang und ein Neustart ohne gespeicherte neue Auswahl legen keine Zusatzvariablen an.
+```php
+echo ROBONECT_RefreshAllValues($InstanzID, '');
+```
 
-Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Idents und Datentypen bleiben erhalten, mit Ausnahme der ausdrücklich gewünschten Zusammenfassung bisheriger Einzelalarme.
+Der zweite Parameter bleibt aus Kompatibilitätsgründen erhalten und verändert kein Formular. Der Testdouble bildet nun die beiden Pflichtparameter nach; der zuvor fehlerhafte Formularaufruf mit nur einem Argument würde im Test scheitern. Die Rückmeldung zeigt die Ergebnisse aller vier Abrufe. Eine während des Abrufs abgelöste Instanz wird durch den Schutz aus Build 11 abgefangen.
 
-Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.11**; Bibliotheks-Build 11 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend Checkboxänderungen über den normalen Symcon-Dialog übernehmen.
-
-Der Aktualisierungsknopf steht im Bereich „Aktualisierung und Vorgabewerte“. Seit Build 9 ruft sein Skript ausschließlich `ROBONECT_RefreshAllValues($id)` auf und benötigt keine Formularvariablen mehr. Damit entfällt auch die frühere Scope-Abhängigkeit von `$VariableVisibility`. `ApplyChanges()` und Gesamtabrufe senden keine Formularänderungen mehr. Die Tests prüfen, dass wiederholte Hintergrundabrufe, MQTT-Erkennung, Apply und Gesamtabrufe weder Eigenschaften speichern noch offene Checklisten überschreiben. Neu erkannte Werte werden beim erneuten Öffnen als Kandidaten angezeigt. Ein veralteter optionaler Auswahlparameter der Skriptfunktion bleibt aus Kompatibilitätsgründen akzeptiert, verändert aber kein geöffnetes Formular. Das tatsächliche Ausbleiben des wiederholten Speicherdialogs ist noch in Symcon zu bestätigen.
-
-„Daten empfangen“ bedeutet mindestens einen erfassten Wert, auch wenn dieser dem bestehenden Wert entspricht. Das bisherige „Vorhanden“ heißt jetzt **„Empfang nicht erfasst“**: Das Objekt existiert, aber der Empfang ist nicht vermerkt. Beide Zustände geben kein Alter des Wertes an. Substatus und Klartext haben nun Beschreibungen mit ihren MQTT-Topics; eine HTTP-Gesamtaktualisierung liefert diese beiden Werte derzeit nicht. Tests decken gespeicherte und laufende MQTT-Meldungen sowie fragmentierte Pakete und unveränderte Werte ab. Der tatsächliche Versand durch den Automower 310 ist ohne Brokerdaten weiterhin offen.
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.12**; Bibliotheks-Build 12 kennzeichnet die Änderung. Nach dem Modulupdate die Konfiguration schließen und neu öffnen, damit das neue Formular und der korrigierte Knopf geladen werden. Die tatsächliche Darstellung und Übernahme sind noch in Symcon zu bestätigen.
 
 ## Zusammengefasste Gerätealarme
 
@@ -83,7 +91,7 @@ Die Fehlerliste wird bei jedem `error`-Abruf vollständig durch den vom Gerät g
 
 Konkrete Fehlertexte des Geräts bleiben erhalten. Ein fehlender Text oder eine bloße Wiederholung wie „Fehler 9“ wird als „Keine nähere Beschreibung vom Gerät“ angezeigt; der Code bleibt in seiner eigenen Spalte sichtbar. Für **Mähercode 203** wurde in den geprüften Quellen keine belastbare Bedeutung gefunden. Er ist nicht mit dem modul-internen Verbindungsstatus 203 („Kein JSON …“) gleichzusetzen. Der nachgereichte Screenshot bestätigt dieselben 203-Einträge im Robonect-Webinterface. Ob sie einen tatsächlichen Mäherfehler oder ein Robonect-/Firmwareproblem darstellen, bleibt offen.
 
-Der bisher abgeschnittene Bereich „Weitere empfangene Werte“ heißt nun **„Zusatzwerte“**. Das bezeichnet eine Gruppe, keinen Schalter zum weiteren Empfangen. Beispielsweise ist `HTTP status: status.home` der technische Feldpfad `status.home` aus der Antwort auf `status`; eine Bedeutung für unbekannte Felder wird nicht geraten. „Daten empfangen“ bestätigt lediglich, dass das Feld bereits geliefert wurde. Die Erkennung löst keine zusätzliche Abfrage aus und verändert weder gespeicherte Auswahl noch Idents. Variablen werden weiterhin ausschließlich bei tatsächlicher Wertänderung geschrieben.
+Der bisher abgeschnittene Bereich „Weitere empfangene Werte“ heißt nun **„Zusatzwerte“**. Das bezeichnet eine Gruppe, keinen Schalter zum weiteren Empfangen. Beispielsweise ist `HTTP status: status.home` der technische Feldpfad `status.home` aus der Antwort auf `status`; eine Bedeutung für unbekannte Felder wird nicht geraten. Die Erkennung löst keine zusätzliche Abfrage aus und verändert weder gespeicherte Auswahl noch Idents. Variablen werden weiterhin ausschließlich bei tatsächlicher Wertänderung geschrieben.
 
 ## Zeichenkodierung von Fehlerhistorie und GPS sowie Abrufdiagnose
 
@@ -164,7 +172,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **232 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **242 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php

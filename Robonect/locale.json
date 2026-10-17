@@ -35,18 +35,14 @@
       "Enable": "Aktiv",
       "Group": "Bereich",
       "Value": "Wert",
-      "Data": "Daten",
       "Diagnostics": "Diagnose",
       "Information and support": "Informationen und Unterstützung",
       "Description": "Beschreibung",
-      "Variable": "Variable",
       "Refresh error history": "Fehlerliste aktualisieren",
       "Refresh all values": "Alle Werte aktualisieren",
       "HTTP update interval": "HTTP-Abfrageintervall",
-      "New values start checked. Save checkbox changes with Symcon Apply Changes. Selected variables are created; unchecked variables are deleted. Re-enabling creates a new ID.": "Neue Werte sind vorausgewählt. Änderungen an den Checkboxen über Symcons „Änderungen übernehmen“ speichern. Dabei werden ausgewählte Variablen angelegt und abgewählte gelöscht. Erneutes Aktivieren vergibt eine neue ID.",
-      "Data received means a value has been delivered at least once. Reception not recorded means the variable exists, but reception has not yet been recorded. Neither indicates freshness.": "„Daten empfangen“: Ein Wert wurde bereits geliefert. „Empfang nicht erfasst“: Die Variable existiert, aber ein Empfang wurde noch nicht erfasst. Beides ist keine Aussage zur Aktualität.",
-      "The checklist is a snapshot. Reopen the configuration to see newly received values and the current variable registration status.": "Die Checkliste ist eine Momentaufnahme. Konfiguration erneut öffnen, um neu empfangene Werte und den aktuellen Anlagenstatus zu sehen.",
-      "HTTP updates supplement MQTT. Automatic health and GPS requests require mowing, searching or charging. Refresh all values also queries parked or sleeping mowers and may wake them.": "HTTP-Updates ergänzen MQTT. Automatische Gerätedaten- und GPS-Abfragen erfolgen nur beim Mähen, Suchen oder Laden. „Alle Werte aktualisieren“ fragt auch geparkte oder schlafende Mäher ab und kann sie aufwecken."
+      "HTTP updates supplement MQTT. Automatic health and GPS requests require mowing, searching or charging. Refresh all values also queries parked or sleeping mowers and may wake them.": "HTTP-Updates ergänzen MQTT. Automatische Gerätedaten- und GPS-Abfragen erfolgen nur beim Mähen, Suchen oder Laden. „Alle Werte aktualisieren“ fragt auch geparkte oder schlafende Mäher ab und kann sie aufwecken.",
+      "New additional values start unchecked. Save checkbox changes with Symcon Apply Changes. Selected variables are created; unchecked variables are deleted. Timer channels use the existing weekly schedule.": "Neue Zusatzwerte sind zunächst abgewählt. Die Checkboxen über Symcons „Änderungen übernehmen“ speichern. Ausgewählte Variablen werden angelegt, abgewählte gelöscht. Für Timerkanäle wird der vorhandene Wochenplan verwendet."
     }
   }
 }

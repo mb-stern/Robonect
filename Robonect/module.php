@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.11';
+    private const MODULE_BUILD = '2026-10-17.12';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     private $instanceGuardActive = false;
@@ -63,12 +63,15 @@ class RobonectWifiModul extends IPSModule
         }
 
         // Generate Profiles & Variables
+        $this->preflightRetiredExtras();
+        $this->importRetiredExtras();
         $this->importLegacyHealthAlarms();
         $this->preflightLegacyHealthAlarms();
         $this->registerProfiles();
         $this->registerVariables();
         $this->registerAdditionalValues();
         $this->removeLegacyHealthAlarms();
+        $this->removeRetiredExtras();
         $this->applyVariableVisibility();
         $this->refreshCachedErrorHistory();
 
@@ -911,11 +914,14 @@ class RobonectWifiModul extends IPSModule
 
     protected function receiveMQTTValue(string $topic, string $payload, bool $retained)
     {
+        if ($this->isTimerChannelSource('MQTT ' . $topic)) return;
         if (strpos($topic, '/health/alarm/') === 0 && strlen($topic) > strlen('/health/alarm/')) {
             if ($this->updateHealthAlarms([substr($topic, strlen('/health/alarm/')) => $payload]) && !$retained) $this->updateIdent('mowerMqttStatus', 'online');
             return;
         }
         $topics = [
+            '/device/name' => 'mowerName',
+            '/device/serial' => 'mowerSerial',
             '/mower/status' => 'mowerStatus',
             '/mower/error/code' => 'mowerErrorCode',
             '/mower/error/message' => 'mowerErrorMessage',
@@ -947,7 +953,11 @@ class RobonectWifiModul extends IPSModule
             '/gps/longitude' => 'mowerGpsLongitudeRaw'
         ];
         if (!isset($topics[$topic])) {
-            if ($topic !== '/control' && strpos($topic, '/control/') !== 0) $this->observeExtraValue('MQTT ' . $topic, $payload);
+            if ($topic !== '/control' && strpos($topic, '/control/') !== 0) {
+                $source = 'MQTT ' . $topic;
+                $this->observeExtraValue($source, $payload);
+                if (!$retained && $this->extraSourceAlias($source) !== null) $this->updateIdent('mowerMqttStatus', 'online');
+            }
             return;
         }
         $ident = $topics[$topic];
@@ -1122,23 +1132,79 @@ class RobonectWifiModul extends IPSModule
         foreach ($form['elements'] as &$element) {
             if (($element['name'] ?? '') === 'VariableSelection') {
                 $element['items'][1]['values'] = $rows;
-                // Use the native List property loading/saving. Ident and Visible
-                // are persisted columns; metadata comes from these dynamic rows.
-                // During the one-time alarm merge, old saved row indexes no longer
-                // match. Supply canonical rows until the next normal native save.
-                $saved = json_decode($this->ReadPropertyString('VariableVisibility'), true) ?: [];
-                $legacy = $this->legacyHealthAlarmIdents();
-                foreach ($saved as $row) {
-                    if (is_array($row) && isset($row['Ident'], $legacy[$row['Ident']]) && version_compare(IPS_GetKernelVersion(), '6.0', '>=')) {
-                        $element['items'][1]['loadValuesFromConfiguration'] = false;
-                        break;
-                    }
-                }
+                // Old versions persisted entire rows, including stale labels.
+                // Merge choices by Ident ourselves; native Apply still saves edits.
+                if (version_compare(IPS_GetKernelVersion(), '6.0', '>=')) $element['items'][1]['loadValuesFromConfiguration'] = false;
             }
             if (($element['name'] ?? '') === 'ModuleInformation') $element['items'][0]['caption'] = 'Teststand: ' . self::MODULE_BUILD;
         }
         unset($element);
         return json_encode($form);
+    }
+
+    protected function isTimerChannelSource(string $source)
+    {
+        return preg_match('~^MQTT /(?:mower/)?timer/ch[0-9]+(?:/|$)~i', $source) === 1;
+    }
+
+    protected function extraSourceAlias(string $source)
+    {
+        $core = ['MQTT /device/name' => 'mowerName', 'MQTT /device/serial' => 'mowerSerial'];
+        if (isset($core[$source])) return ['ident' => $core[$source], 'source' => null];
+        $paths = [
+            'MQTT /mower/prevent' => 'status.prevent',
+            'MQTT /mower/home' => 'status.home',
+            'MQTT /mower/distance' => 'status.distance',
+        ];
+        foreach (['/mower/timer/next/', '/timer/next/', '/Timer/next/'] as $prefix) {
+            foreach (['date', 'time'] as $part) $paths['MQTT ' . $prefix . $part] = 'timer.next.' . $part;
+        }
+        if (!isset($paths[$source])) return null;
+        $canonical = 'HTTP status: ' . $paths[$source];
+        return ['ident' => 'extra_' . substr(sha1($canonical), 0, 20), 'source' => $canonical];
+    }
+
+    protected function retiredExtraSources()
+    {
+        $sources = [];
+        $discovered = json_decode($this->ReadAttributeString('DiscoveredValues'), true) ?: [];
+        foreach ($discovered as $ident => $item) if (isset($item['name'])) $sources[$ident] = $item['name'];
+        // Older native lists stored metadata as well; use it if the cache is absent.
+        $saved = json_decode($this->ReadPropertyString('VariableVisibility'), true) ?: [];
+        foreach ($saved as $row) if (isset($row['Ident'], $row['Name']) && !isset($sources[$row['Ident']])) $sources[$row['Ident']] = $row['Name'];
+        foreach ($sources as $ident => $source) {
+            if (!is_string($source) || $ident !== 'extra_' . substr(sha1($source), 0, 20)
+                || (!$this->isTimerChannelSource($source) && $this->extraSourceAlias($source) === null)) unset($sources[$ident]);
+        }
+        return $sources;
+    }
+
+    protected function preflightRetiredExtras()
+    {
+        foreach ($this->retiredExtraSources() as $ident => $source) {
+            $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
+            if ($id !== false && IPS_GetChildrenIDs($id) !== []) throw new RuntimeException('Variable ' . $ident . ' has child objects and cannot be consolidated.');
+        }
+    }
+
+    protected function importRetiredExtras()
+    {
+        $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
+        $discovered = json_decode($this->ReadAttributeString('DiscoveredValues'), true) ?: [];
+        foreach ($this->retiredExtraSources() as $ident => $source) {
+            $alias = $this->extraSourceAlias($source);
+            if ($alias === null || !isset($available[$ident], $discovered[$ident]) || isset($available[$alias['ident']])) continue;
+            if ($this->variableExists($alias['ident']) && $this->readMeasurement($alias['ident'], null) !== '') continue;
+            $this->observeExtraValue($source, $discovered[$ident]['value']);
+            $available[$alias['ident']] = true;
+        }
+    }
+
+    protected function removeRetiredExtras()
+    {
+        foreach ($this->retiredExtraSources() as $ident => $source) {
+            if ($this->variableExists($ident)) $this->MaintainVariable($ident, '', 3, '', 0, false);
+        }
     }
 
     protected function additionalValueDefinition(string $source)
@@ -1272,6 +1338,16 @@ class RobonectWifiModul extends IPSModule
                 $choices[$row['Ident']] = $row['Visible'];
             }
         }
+        $definitions = $this->variableDefinitions();
+        foreach ($this->retiredExtraSources() as $ident => $source) {
+            $alias = $this->extraSourceAlias($source);
+            if ($alias !== null && !array_key_exists($alias['ident'], $choices) && $this->variableExists($ident)) {
+                if (!isset($definitions[$alias['ident']]) || !empty($definitions[$alias['ident']]['extra'])) {
+                    $choices[$alias['ident']] = $choices[$ident] ?? $this->selectedVisibility($ident, []);
+                }
+            }
+            unset($choices[$ident]);
+        }
         $legacyChoices = [];
         foreach ($this->legacyHealthAlarmIdents() as $ident => $_) {
             if (array_key_exists($ident, $choices)) $legacyChoices[] = $choices[$ident];
@@ -1294,8 +1370,9 @@ class RobonectWifiModul extends IPSModule
         if (array_key_exists($ident, $choices)) return $choices[$ident];
         $id = @IPS_GetObjectIDByIdent($ident, $this->InstanceID);
         if ($id !== false) return !IPS_GetObject($id)['ObjectIsHidden'];
-        // New discovered fields start checked, but are created only by ApplyChanges.
-        return true;
+        // Preserve original defaults; new optional values require an explicit check.
+        $definition = $this->variableDefinitions()[$ident] ?? null;
+        return $definition !== null && empty($definition['extra']);
     }
 
     protected function visibilityRows()
@@ -1305,7 +1382,7 @@ class RobonectWifiModul extends IPSModule
         $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
         $choices = $this->visibilityChoices();
         foreach ($discovered as $ident => $item) {
-            if ($this->healthAlarmSourceKey($item['name']) !== null) continue;
+            if ($this->healthAlarmSourceKey($item['name']) !== null || $this->isTimerChannelSource($item['name']) || $this->extraSourceAlias($item['name']) !== null) continue;
             if (!isset($definitions[$ident])) $definitions[$ident] = $this->additionalValueDefinition($item['name']);
         }
         $rows = [];
@@ -1320,9 +1397,7 @@ class RobonectWifiModul extends IPSModule
                 'Name' => $definition['name'],
                 'Description' => $definition['description'] ?? '',
                 'Group' => $definition['group'],
-                'Visible' => $this->selectedVisibility($ident, $choices),
-                'Variable' => $this->variableExists($ident) ? 'Angelegt' : 'Nicht angelegt',
-                'Data' => isset($available[$ident]) ? 'Daten empfangen' : ($this->variableExists($ident) ? 'Empfang nicht erfasst' : 'Noch keine Daten')
+                'Visible' => $this->selectedVisibility($ident, $choices)
             ];
         }
         return $rows;
@@ -1336,7 +1411,7 @@ class RobonectWifiModul extends IPSModule
         $position = 200;
         $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
         foreach ($discovered as $ident => $item) {
-            if ($this->healthAlarmSourceKey($item['name']) !== null) continue;
+            if ($this->healthAlarmSourceKey($item['name']) !== null || $this->isTimerChannelSource($item['name']) || $this->extraSourceAlias($item['name']) !== null) continue;
             if (!isset($definitions[$ident])) $definitions[$ident] = $this->additionalValueDefinition($item['name']);
         }
         foreach ($definitions as $ident => $definition) {
@@ -1414,6 +1489,12 @@ class RobonectWifiModul extends IPSModule
         if (!is_scalar($value)) return;
         $text = is_string($value) ? $value : json_encode($value);
         if (strlen($text) > 4096 || preg_match('//u', $text) !== 1) return;
+        if ($this->isTimerChannelSource($source)) return;
+        $alias = $this->extraSourceAlias($source);
+        if ($alias !== null) {
+            if ($alias['source'] === null) { $this->updateIdent($alias['ident'], $text); return; }
+            $source = $alias['source'];
+        }
         $ident = 'extra_' . substr(sha1($source), 0, 20);
         $this->recordDiscovered($ident, $source, $text);
         // Receiving telemetry never calls RegisterVariable*.
