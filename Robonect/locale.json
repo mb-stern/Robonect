@@ -3,33 +3,43 @@
     "de": {
       "Disclaimer": "Dieses Modul wurde unabhängig vom Hersteller des Robonect Moduls entwickelt. Die Benutzung des Moduls erfolgt auf eigene Gefahr unter Ausschluss jeglicher Gewährleistung für Probleme oder Schäden am Robonect Modul.",
       "Donation": "Das Modul ist ein Hobby. Wer sich mit einer kleinen Spende für dessen Entwicklung (ohne Recht auf irgendwelche Ansprüche) bedanken möchte, kann dies gerne via Paypal-Spende machen:",
-
       "Login": "Login Daten des Robonect Moduls (benötigt zum Lesen sowie zur Steuerung)",
       "Username": "Benutzername",
       "Password": "Passwort",
-
       "AutomaticUpdate": "Automatische Updates (bei MQTT-Nutzung sollte das Intervall höher sein, aber MQTT liefert nicht alles!)",
       "UpdateTimer": "Update alle",
       "seconds": "Sekunden",
-
       "MQTT Topic Label": "MQTT Topic",
       "MQTTTopic": "Eingestelltes MQTT Topic im Robonect Modul",
-
       "DefaultValues": "Vorgabewerte",
       "MowingTime": "Mähzeit bei Sofortstart",
       "minutes": "Minuten",
-
       "Debugging": "Debugging Tools",
       "DebugLog": "Debug Logging aktivieren",
-
       "Check Connection": "Verbindung testen",
-
       "Robonect identified": "Robonect gefunden",
       "Configuration missing": "Konfiguration fehlt",
       "IP invalid": "IP Adresse ungültig",
       "No device found on IP": "Kein Gerät antwortet an der IP Adresse",
       "No JSON returned from IP": "Kein JSON wird an der IP Adresse geliefert",
-      "No Robonect available at IP": "Kein Robonect an IP Adresse erreichbar"
+      "No Robonect available at IP": "Kein Robonect an IP Adresse erreichbar",
+      "IP address": "IP-Adresse",
+      "Connection": "Verbindung",
+      "MQTT topic": "MQTT-Topic",
+      "Updates and defaults": "Aktualisierung und Vorgabewerte",
+      "Enable HTTP updates": "Automatische HTTP-Aktualisierung",
+      "Update interval": "Intervall",
+      "Default mowing time": "Mähdauer bei Sofortstart",
+      "Sleeping mowers receive status requests only; MQTT values remain passive.": "Im Schlaf nur Statusabfragen; MQTT-Werte kommen weiterhin passiv an.",
+      "Active variables": "Aktive Variablen",
+      "New received values start checked. Apply creates selected and deletes unchecked variables. Re-enabling creates a new ID.": "Neue Werte erscheinen beim erneuten Öffnen vorausgewählt. Übernehmen legt ausgewählte Variablen an und löscht abgewählte. Erneutes Aktivieren vergibt eine neue ID.",
+      "Select active values": "Aktivierte Werte",
+      "Enable": "Aktiv",
+      "Group": "Bereich",
+      "Value": "Wert",
+      "Data": "Daten",
+      "Diagnostics": "Diagnose",
+      "Information and support": "Informationen und Unterstützung"
     }
   }
 }

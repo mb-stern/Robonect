@@ -14,6 +14,8 @@ Das Modul ist ein Hobby. Wer sich mit einer kleinen Spende für dessen Entwicklu
 
 ## Dokumentation
 
+Der [technische Prüfbericht des Test-Branches](docs/API-Pruefung.md) beschreibt die API-Korrekturen, die Variablen-Checkliste und die noch erforderlichen Praxistests.
+
 ** Inhaltsverzeichnis **
 
 1. [Funktionsumfang](#1-funktionsumfang)
