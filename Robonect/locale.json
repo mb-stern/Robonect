@@ -39,7 +39,12 @@
       "Data": "Daten",
       "Diagnostics": "Diagnose",
       "Information and support": "Informationen und Unterstützung",
-      "New received values start checked. Apply creates selected and deletes unchecked variables. Re-enabling creates a new ID. Additional values are raw fields from existing HTTP/MQTT data; no extra requests.": "Neue Werte erscheinen beim erneuten Öffnen vorausgewählt. Übernehmen legt ausgewählte Variablen an und löscht abgewählte. Erneutes Aktivieren vergibt eine neue ID. Zusatzwerte sind technische Felder aus bereits empfangenen HTTP-/MQTT-Daten; keine zusätzlichen Abfragen."
+      "New values start checked. Save the displayed checkboxes with Apply variable selection. Selected variables are created; unchecked variables are deleted. Additional fields have a description and source.": "Neue Werte sind vorausgewählt. „Variablenauswahl übernehmen“ speichert die sichtbaren Haken und legt die Variablen an. Abgewählte Variablen werden gelöscht; erneutes Aktivieren vergibt eine neue ID. Zusatzfelder haben eine Beschreibung samt Quelle.",
+      "Description": "Beschreibung",
+      "Variable": "Variable",
+      "Apply variable selection": "Variablenauswahl übernehmen",
+      "Refresh error history": "Fehlerliste aktualisieren",
+      "Refresh all values": "Alle Werte aktualisieren"
     }
   }
 }

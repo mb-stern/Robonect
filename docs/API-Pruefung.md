@@ -17,6 +17,18 @@ Die Checkliste bestimmt, welche Statusvariablen angelegt werden:
 
 Zusätzlich zu den bekannten Variablen können bisher nicht zugeordnete skalare Daten aus den ohnehin abgefragten Antworten `status`, `health`, `gps` und aus MQTT angeboten werden. Unbekannte Werte bleiben als **String-Rohwerte** erhalten; Einheit und Bedeutung werden nicht geraten. Der Ident wird stabil aus Quelle und Pfad abgeleitet. Listen/Historien mit numerischen Indizes, Zugangsdatenfelder und MQTT-Steuertopics werden nicht in einzelne neue Variablen umgewandelt. Für die Erkennung werden keine zusätzlichen API-Befehle aufgerufen.
 
+## Manuelle Aktualisierung und sichtbarer Teststand
+
+Im Formular stehen „Alle Werte aktualisieren“, „Verbindung testen“ und „Fehlerliste aktualisieren“ bereit. Jeder dieser Knöpfe gibt eine sichtbare Rückmeldung aus. Der Verbindungstest fragt ausschließlich `status` ab. Die Gesamtaktualisierung nutzt den bestehenden Status-/Health-/GPS-Ablauf und ergänzt bei wachem Mäher den Fehlerhistorienabruf. Aktuelle MQTT-GPS-Daten vermeiden weiterhin eine zusätzliche GPS-Anfrage. Rückmeldungen unterscheiden empfangene Daten, nicht unterstützte Befehle, fehlgeschlagene Abfragen und eine bereits laufende Aktualisierung. Bei unbekanntem, schlafendem oder abgeschaltetem Zustand werden Detail- und Historienabfragen ausgelassen und dies ausdrücklich gemeldet.
+
+Die Gesamtaktualisierung legt keine neuen Variablen an und überträgt keine Steuerbefehle oder Wochenpläne. „Alle Werte“ bezieht sich auf die bereits unterstützten Istwerte, nicht auf sämtliche zusätzlichen API-Kommandos wie `battery`, `motor` oder `hour`.
+
+Neue vorausgewählte Zusatzwerte können mit **„Variablenauswahl übernehmen“** ausdrücklich gespeichert werden, auch wenn die Haken nicht umgeschaltet wurden. Der Knopf verwendet die aktuell angezeigten Zeilen, validiert Idents und boolesche Haken, speichert die Auswahl über `IPS_SetProperty` und wendet sie mit `IPS_ApplyChanges` an. Andere ungespeicherte Formularfelder werden nicht überschrieben. Die Spalte **„Variable“** unterscheidet „Angelegt“ und „Nicht angelegt“; sie wird anschließend aktualisiert. Der Empfangsstatus ist davon getrennt. Auch das gewöhnliche Speichern der Konfiguration bleibt unterstützt. Ohne gespeicherte Auswahl werden weiterhin keine neuen Objekte durch Empfang oder Neustart angelegt.
+
+Bekannte Zusatzfelder erhalten deutsche Namen und Beschreibungen inklusive technischer Quelle. Das betrifft Entfernung, Gerätedatum/-uhrzeit, Datum/Uhrzeit des nächsten Timerstarts und Health-Alarmfelder. `status.home`, `status.prevent` und unbekannte Felder bleiben ausdrücklich als nicht abschließend dokumentierte Rohwerte erkennbar. Bereits verwendete Idents und Datentypen bleiben erhalten.
+
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.2**; Bibliotheks-Build 2 kennzeichnet diese Änderung ebenfalls. Zur Prüfung in Symcon diesen Stand laden, die Instanzkonfiguration übernehmen, bei Bedarf „Alle Werte aktualisieren“ anklicken und anschließend die sichtbare Variablenauswahl übernehmen.
+
 ## Korrigierte Fehler
 
 | Bereich | Bisheriges Problem | Änderung |
@@ -38,7 +50,7 @@ Zusätzlich zu den bekannten Variablen können bisher nicht zugeordnete skalare 
 
 ## Fehlerhistorie und Zusatzwerte
 
-Die Fehlerliste wird bei jedem `error`-Abruf vollständig durch den vom Gerät gelieferten Fehlerspeicher ersetzt. Wiederholte Abfragen hängen keine neuen Ereignisse an. **Code 203 wird auf Wunsch aus der Anzeige herausgefiltert und nicht im Fehlerzähler berücksichtigt.** Wenn nur solche Einträge vorliegen, werden Anzeige und Zähler geleert. Es erfolgt kein Löschbefehl an das Gerät; aktive Fehlerwerte und der Verbindungsstatus bleiben unberührt. Andere Codes mit unterschiedlichen Zeitpunkten bleiben als mehrere Einträge sichtbar; auch zeitgleiche Einträge werden nicht eigenmächtig zusammengefasst. Die Tabelle kennzeichnet die Quelle und sortiert gültige ISO-/deutsche Datumsangaben absteigend; ersatzweise wird `unix` verwendet. Einträge ohne gültigen Zeitpunkt bleiben am Ende in Geräte-Reihenfolge.
+Die Fehlerliste wird bei jedem `error`-Abruf vollständig durch den vom Gerät gelieferten Fehlerspeicher ersetzt. Wiederholte Abfragen hängen keine neuen Ereignisse an. **Code 203 wird auf Wunsch aus der Anzeige herausgefiltert und nicht im Fehlerzähler berücksichtigt.** Wenn nur solche Einträge vorliegen, werden Anzeige und Zähler geleert. Auch vorher gespeicherte Tabellen mit 203-Zeilen werden beim Übernehmen oder bei der manuellen Gesamtaktualisierung lokal bereinigt, ohne den Mäher dafür abzufragen. Dies gilt für die bisherigen Tabellen mit fünf Zellen pro Fehlerzeile; unbekannte Tabellenstrukturen werden unverändert gelassen. Numerische Schreibweisen wie `203.0` werden ebenfalls herausgefiltert. Es erfolgt kein Löschbefehl an das Gerät; aktive Fehlerwerte und der Verbindungsstatus bleiben unberührt. Andere Codes mit unterschiedlichen Zeitpunkten bleiben als mehrere Einträge sichtbar; auch zeitgleiche Einträge werden nicht eigenmächtig zusammengefasst. Die Tabelle kennzeichnet die Quelle und sortiert gültige ISO-/deutsche Datumsangaben absteigend; ersatzweise wird `unix` verwendet. Einträge ohne gültigen Zeitpunkt bleiben am Ende in Geräte-Reihenfolge.
 
 Konkrete Fehlertexte des Geräts bleiben erhalten. Ein fehlender Text oder eine bloße Wiederholung wie „Fehler 9“ wird als „Keine nähere Beschreibung vom Gerät“ angezeigt; der Code bleibt in seiner eigenen Spalte sichtbar. Für **Mähercode 203** wurde in den geprüften Quellen keine belastbare Bedeutung gefunden. Er ist nicht mit dem modul-internen Verbindungsstatus 203 („Kein JSON …“) gleichzusetzen. Der nachgereichte Screenshot bestätigt dieselben 203-Einträge im Robonect-Webinterface. Ob sie einen tatsächlichen Mäherfehler oder ein Robonect-/Firmwareproblem darstellen, bleibt offen.
 
@@ -71,7 +83,7 @@ Diese weiteren Befehle wurden nicht automatisch aktiviert. Mehrere Datenbefehle 
 
 ## Grenzen und Praxistest
 
-Noch kein Test in einer echten IP-Symcon-Instanz und kein Zugriff auf den Automower 310. Die automatisierten Tests verwenden ein Symcon-Testdouble und einen lokalen HTTP-Simulator, keine Mähersteuerung. Die native Darstellung des Formulars muss in Symcon 9.0 geprüft werden.
+Noch kein Test in einer echten IP-Symcon-Instanz und kein Zugriff auf den Automower 310. Die automatisierten Tests verwenden ein Symcon-Testdouble und einen lokalen HTTP-Simulator, keine Mähersteuerung. Die native Darstellung des Formulars und das Speichern aus der echten Symcon-9.0-Oberfläche müssen am Zielsystem geprüft werden. Die Tests führen den PHP-Code des neuen Auswahlknopfs mit iterierbaren Formularzeilen und SDK-Testdouble aus; sie ersetzen keine laufende Symcon-Instanz.
 
 Die Statusabfrage läuft weiter. Sie ist laut Forum üblicherweise ohne Aufwecken möglich; es gibt auch modell-/zustandsabhängige Berichte. Die Nachtruhe deshalb am Zielgerät beobachten. Ein Zustandswechsel zwischen Statusantwort und Detailabfrage lässt sich ohne Gerätezugriff nicht ausschließen.
 
@@ -83,7 +95,7 @@ Zum Testen den Branch `test/error-list-semaphore` laden. Zunächst vorhandene Va
 
 ## Automatisierte Prüfungen
 
-Stand 17.10.2026: **154 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
+Stand 17.10.2026: **169 Prüfungen bestanden** unter PHP 8.4.26; zusätzlich alle PHP-Syntax- und JSON-Prüfungen bestanden.
 
 ```sh
 python3 tests/run.py --php php

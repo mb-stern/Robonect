@@ -17,6 +17,8 @@ class IPSModule
     public $buffers = [];
     public $failSetValue = false;
     public $setValueCalls = [];
+    public $formUpdates = [];
+    public $variableNames = [];
     public $status;
     public $timerIntervals = [];
     public function Create() {}
@@ -36,11 +38,13 @@ class IPSModule
     public function RegisterTimer($name, $interval, $script) {}
     public function SetTimerInterval($name, $interval) { $this->timerIntervals[$name] = $interval; }
     public function SendDebug($name, $message, $format) {}
+    public function UpdateFormField($name, $parameter, $value) { $this->formUpdates[] = [$name, $parameter, $value]; }
     public function EnableAction($ident) {}
     public function MaintainAction($ident, $enabled) { return true; }
     public function GetValue($ident) { return $this->values[$ident]; }
     public function MaintainVariable($ident, $name, $type, $profile, $position, $keep) {
         $GLOBALS['maintainCalls'][] = [$ident, $type, $keep];
+        $this->variableNames[$ident] = $name;
         if (!$keep) {
             foreach ($GLOBALS['eventParents'] as $parent) if ($parent === $ident) throw new RuntimeException('Variable has children');
             unset($this->types[$ident], $this->values[$ident], $GLOBALS['objects'][$ident]); return false;
@@ -66,6 +70,9 @@ class IPSModule
     public function RegisterVariableFloat($ident, $name, $profile, $position) { return $this->register($ident, 'double', 0.0); }
     public function RegisterVariableBoolean($ident, $name, $profile, $position) { return $this->register($ident, 'boolean', false); }
 }
+function IPS_SetProperty($id, $name, $value) { $GLOBALS['instances'][$id]->properties[$name] = $value; }
+function IPS_ApplyChanges($id) { $GLOBALS['instances'][$id]->ApplyChanges(); }
+function ROBONECT_SaveVariableSelection($id, $selection) { return $GLOBALS['instances'][$id]->SaveVariableSelection($selection); }
 function GetValueInteger($id) { return $GLOBALS['objects'][$id]->values[$id]; }
 function GetValueBoolean($id) { return $GLOBALS['objects'][$id]->values[$id]; }
 function IPS_GetKernelVersion() { return $GLOBALS['kernelVersion'] ?? '9.0'; }
@@ -130,6 +137,7 @@ function freshModule($additional = false) {
     $GLOBALS['scheduleWrites'] = $GLOBALS['semaphores'] = $GLOBALS['hidden'] = [];
     $GLOBALS['canEnter'] = true;
     $m = new TestModule();
+    $GLOBALS['instances'] = [$m->InstanceID => $m];
     if ($additional) $m->properties['VariableVisibility'] = json_encode(array_map(function ($ident) { return ['Ident' => $ident, 'Visible' => true]; }, ['mowerErrorCode', 'mowerErrorMessage', 'mowerGpsSatellites', 'mowerGpsReceivedAt']));
     $m->registerValues(); $GLOBALS['scheduleWrites'] = []; return $m;
 }

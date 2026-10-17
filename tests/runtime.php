@@ -180,4 +180,34 @@ test('Equivalent GPS formatting cannot change the position timestamp', function 
 test('Optional detail failures do not mark a valid status connection offline', function () {
     $m=freshModule(); $m->responses=['status'=>awake(),'health'=>false,'gps'=>false]; $m->Update(); eq($m->status,102); eq($m->values['mowerBatterySoc'],65);
 });
+test('Manual full refresh updates current values and error history with a readable report', function () {
+    $m=freshModule();$m->responses=['status'=>awake(),'health'=>['successful'=>true],'gps'=>['successful'=>true],'error'=>['successful'=>true,'errors'=>[['error_code'=>203],['error_code'=>80,'error_message'=>'Schneidsystem unregelmäßig']]]];
+    $message=$m->RefreshAllValues();eq($m->commands,['status','health','gps','error']);
+    foreach(['Status: empfangen','Gerätedaten: empfangen','GPS: empfangen','Fehlerliste: aktualisiert'] as $text)check(strpos($message,$text)!==false);
+    eq($m->values['mowerErrorCount'],1);eq(count($m->types),35);
+    $calls=$m->setValueCalls;$m->RefreshAllValues();eq($m->setValueCalls,$calls);
+});
+foreach([16,17] as $state)test('Manual refresh keeps sleeping state '.$state.' free of detail and history requests',function()use($state){
+    $m=freshModule();$m->responses['status']=awake($state);$message=$m->RefreshAllValues();eq($m->commands,['status']);
+    check(strpos($message,'zum Schutz der Ruhe nicht abgefragt')!==false);
+});
+test('Manual refresh reports failed status and lock contention without stale-state requests',function(){
+    $m=freshModule();$m->responses['status']=false;$message=$m->RefreshAllValues();eq($m->commands,['status']);check(strpos($message,'keine gültige Statusantwort')!==false);
+    $GLOBALS['canEnter']=false;$m->commands=[];$message=$m->RefreshAllValues();eq($m->commands,[]);check(strpos($message,'läuft bereits')!==false);
+});
+test('Manual refresh explains unknown mower state instead of querying details',function(){
+    $m=freshModule();$m->responses['status']=['successful'=>true];$message=$m->RefreshAllValues();eq($m->commands,['status']);check(strpos($message,'Mäherzustand unbekannt')!==false);
+});
+test('Manual refresh reports optional failures without claiming complete success',function(){
+    $m=freshModule();$m->responses=['status'=>awake(),'health'=>false,'gps'=>false,'error'=>false];$message=$m->RefreshAllValues();
+    foreach(['Gerätedaten: Abfrage fehlgeschlagen','GPS: Abfrage fehlgeschlagen','Fehlerliste: Abfrage fehlgeschlagen'] as $text)check(strpos($message,$text)!==false);
+});
+test('Manual refresh reports use of live MQTT GPS without an extra GPS request',function(){
+    $m=freshModule();receive($m,publish('mower/gps/latitude','47.5').publish('mower/gps/longitude','8.25'));$m->responses['status']=awake();$m->responses['error']=['successful'=>true,'errors'=>[]];
+    $message=$m->RefreshAllValues();eq($m->commands,['status','health','error']);check(strpos($message,'GPS: aktuelle MQTT-Daten genutzt')!==false);
+});
+test('Connection test only reads status and returns success or failure text',function(){
+    $m=freshModule();$m->responses['status']=awake();check(strpos($m->TestConnection(),'erfolgreich')!==false);eq($m->commands,['status']);
+    $m->responses['status']=false;check(strpos($m->TestConnection(),'fehlgeschlagen')!==false);eq($m->commands,['status','status']);
+});
 finishTests();

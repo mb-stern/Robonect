@@ -3,6 +3,8 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
+    private const MODULE_BUILD = '2026-10-17.2';
+    private $updateReport = [];
     /**
      * Die folgenden Funktionen stehen automatisch zur Verfügung, wenn das Modul über die "Module Control" eingefügt wurden.
      * Die Funktionen werden, mit dem selbst eingerichteten Prefix, in PHP und JSON-RPC wiefolgt zur Verfügung gestellt:
@@ -60,6 +62,7 @@ class RobonectWifiModul extends IPSModule
         $this->registerVariables();
         $this->registerAdditionalValues();
         $this->applyVariableVisibility();
+        $this->refreshCachedErrorHistory();
 
         $this->SetTimerInterval("ROBONECT_UpdateTimer",
             $this->ReadPropertyBoolean("HTTPUpdateTimer") && $this->ReadPropertyInteger("UpdateTimer") >= 10
@@ -69,6 +72,7 @@ class RobonectWifiModul extends IPSModule
 
     public function Update()
     {
+        $this->updateReport = [];
         $semaphore = 'Robonect' . $this->InstanceID . '_Update';
         $this->log('Update - Try to enter Semaphore');
         if (IPS_SemaphoreEnter($semaphore, 0) == false) {
@@ -76,6 +80,7 @@ class RobonectWifiModul extends IPSModule
         };
         try {
             $this->log('Update - Semaphore entered');
+            $this->updateReport['status'] = false;
             // HTTP status request
             $data = $this->executeHTTPCommand('status');
             if (!$this->responseSuccessful($data)) {
@@ -83,6 +88,7 @@ class RobonectWifiModul extends IPSModule
             } else {
                 $this->observeHTTPValues('status', $data);
                 $mowerStatus = $this->numericValue($data['status']['status'] ?? null);
+                $this->updateReport = ['status' => true, 'mowerStatus' => $mowerStatus];
                 // set values to variables
 
                 //--- Identification
@@ -141,6 +147,7 @@ class RobonectWifiModul extends IPSModule
             }
 
             $health = $this->executeHTTPCommand('health');
+            $this->updateReport['health'] = $this->responseSuccessful($health);
             if ($this->responseSuccessful($health)) {
                 $this->observeHTTPValues('health', $health);
                 foreach (['temperature' => 'mowerTemperature', 'humidity' => 'mowerHumidity'] as $key => $ident) {
@@ -157,12 +164,15 @@ class RobonectWifiModul extends IPSModule
             $lastGPS = (int) $this->GetBuffer('LastMQTTGPS');
             if ($lastGPS === 0 || time() - $lastGPS >= max(60, $this->ReadPropertyInteger('UpdateTimer') * 2)) {
                 $gps = $this->executeHTTPCommand('gps');
+                $this->updateReport['gps'] = $this->responseSuccessful($gps);
                 if ($this->responseSuccessful($gps)) {
                     $this->observeHTTPValues('gps', $gps);
                     if (isset($gps['gps']['satellites'])) $this->updateIdent('mowerGpsSatellites', $gps['gps']['satellites']);
                     if (isset($gps['gps']['latitude'])) $this->updateIdent('mowerGpsLatitudeRaw', $gps['gps']['latitude']);
                     if (isset($gps['gps']['longitude'])) $this->updateIdent('mowerGpsLongitudeRaw', $gps['gps']['longitude']);
                 }
+            } else {
+                $this->updateReport['gps'] = 'mqtt';
             }
             // Optional detail failures must not mark a working status connection offline.
             $this->SetStatus(102);
@@ -170,6 +180,36 @@ class RobonectWifiModul extends IPSModule
             IPS_SemaphoreLeave($semaphore);
             $this->log('Update - Semaphore leaved');
         }
+    }
+
+    public function TestConnection()
+    {
+        return $this->responseSuccessful($this->executeHTTPCommand('status'))
+            ? 'Verbindung zu Robonect erfolgreich.'
+            : 'Verbindung zu Robonect fehlgeschlagen. Adresse, Zugangsdaten und Instanzstatus prüfen.';
+    }
+
+    public function RefreshAllValues()
+    {
+        $this->refreshCachedErrorHistory();
+        $this->Update();
+        if ($this->updateReport === []) return 'Aktualisierung läuft bereits. Bitte später erneut versuchen.';
+        if (!$this->updateReport['status']) return 'Aktualisierung fehlgeschlagen: keine gültige Statusantwort. Adresse, Zugangsdaten und Instanzstatus prüfen.';
+        $state = $this->updateReport['mowerStatus'];
+        if (in_array($state, [16.0, 17.0], true)) {
+            return 'Status aktualisiert. Der Mäher schläft oder ist abgeschaltet; Gerätedetails und Fehlerhistorie wurden zum Schutz der Ruhe nicht abgefragt. Gespeicherte 203-Einträge sind ausgeblendet.';
+        }
+        if ($state === false || $state <= 0 || floor($state) != $state) {
+            return 'Statusantwort empfangen, Mäherzustand unbekannt. Gerätedetails und Fehlerhistorie wurden nicht abgefragt.';
+        }
+        $unsupported = json_decode($this->ReadAttributeString('UnsupportedCommands'), true) ?: [];
+        $messages = ['Aktualisierung beendet.', 'Status: empfangen'];
+        foreach (['health' => 'Gerätedaten', 'gps' => 'GPS'] as $command => $label) {
+            $result = $this->updateReport[$command] ?? false;
+            $messages[] = $label . ': ' . ($result === 'mqtt' ? 'aktuelle MQTT-Daten genutzt' : ($result ? 'empfangen' : (isset($unsupported[$command]) ? 'nicht unterstützt' : 'Abfrage fehlgeschlagen')));
+        }
+        $messages[] = 'Fehlerliste: ' . ($this->UpdateErrorList() === false ? 'Abfrage fehlgeschlagen; vorhandene Anzeige beibehalten' : 'aktualisiert (Code 203 ausgeblendet)');
+        return implode("\n", $messages);
     }
 
     public function Start()
@@ -222,51 +262,79 @@ class RobonectWifiModul extends IPSModule
                 if (!is_array($error)) return false;
             }
 
-            // Hide code 203 from the displayed history and its count only.
-            // The device's error memory and active fault status stay untouched.
-            $data['errors'] = array_values(array_filter($data['errors'], function ($error) {
-                return !in_array($error['error_code'] ?? null, [203, '203'], true);
-            }));
-
-            $this->writeMeasurement('mowerErrorCount', count($data['errors']));
-            if (count($data['errors']) === 0) {
-                $this->writeMeasurement('mowerErrorList', '');
-                return true;
-            }
-
-            // Rebuild from the device snapshot, never append polling results.
-            // Repeated codes at different times are separate history entries.
-            $errors = [];
-            foreach (array_values($data['errors']) as $index => $error) {
-                $errors[] = ['entry' => $error, 'timestamp' => $this->errorHistoryTimestamp($error), 'index' => $index];
-            }
-            usort($errors, function ($a, $b) {
-                if ($a['timestamp'] === $b['timestamp']) return $a['index'] <=> $b['index'];
-                if ($a['timestamp'] === null) return 1;
-                if ($b['timestamp'] === null) return -1;
-                return $b['timestamp'] <=> $a['timestamp'];
-            });
-
-            $html = '<p>Quelle: Robonect-Fehlerspeicher · Neueste Einträge zuerst</p>';
-            $html .= '<table><thead><tr><th>Nr.</th><th>Datum</th><th>Uhrzeit</th><th>Fehlercode</th><th>Beschreibung</th></tr></thead><tbody>';
-            foreach ($errors as $index => $item) {
-                $error = $item['entry'];
-                $code = isset($error['error_code']) && is_scalar($error['error_code']) ? (string) $error['error_code'] : '';
-                $color = $index % 2 === 0 ? '#555555' : '#333333';
-                $html .= '<tr style="background-color:' . $color . '"><td>' . ($index + 1) . '</td>';
-                foreach (['date', 'time', 'error_code', 'error_message'] as $key) {
-                    $value = isset($error[$key]) && is_scalar($error[$key]) ? (string) $error[$key] : '';
-                    if ($key === 'error_message' && (trim($value) === '' || ($code !== '' && preg_match('/^(?:Fehler|Error)\\s*' . preg_quote($code, '/') . '\\s*$/iu', trim($value))))) {
-                        $value = 'Keine nähere Beschreibung vom Gerät';
-                    }
-                    $html .= '<td>' . htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</td>';
-                }
-                $html .= '</tr>';
-            }
-            $this->writeMeasurement('mowerErrorList', $html . '</tbody></table>');
+            return $this->renderErrorHistory($data['errors']);
         } finally {
             IPS_SemaphoreLeave($semaphore);
         }
+    }
+
+    protected function renderErrorHistory(array $entries)
+    {
+        // Hide code 203 from the displayed history and its count only.
+        // The device's error memory and active fault status stay untouched.
+        $entries = array_values(array_filter($entries, function ($error) {
+            $code = $error['error_code'] ?? null;
+            return !(is_scalar($code) && !is_bool($code) && is_numeric($code) && (float) $code === 203.0);
+        }));
+
+        $this->writeMeasurement('mowerErrorCount', count($entries));
+        if (count($entries) === 0) {
+            $this->writeMeasurement('mowerErrorList', '');
+            return true;
+        }
+
+        // Rebuild from the device snapshot, never append polling results.
+        // Repeated codes at different times are separate history entries.
+        $errors = [];
+        foreach ($entries as $index => $error) {
+            $errors[] = ['entry' => $error, 'timestamp' => $this->errorHistoryTimestamp($error), 'index' => $index];
+        }
+        usort($errors, function ($a, $b) {
+            if ($a['timestamp'] === $b['timestamp']) return $a['index'] <=> $b['index'];
+            if ($a['timestamp'] === null) return 1;
+            if ($b['timestamp'] === null) return -1;
+            return $b['timestamp'] <=> $a['timestamp'];
+        });
+
+        $html = '<p>Quelle: Robonect-Fehlerspeicher · Neueste Einträge zuerst</p>';
+        $html .= '<table><thead><tr><th>Nr.</th><th>Datum</th><th>Uhrzeit</th><th>Fehlercode</th><th>Beschreibung</th></tr></thead><tbody>';
+        foreach ($errors as $index => $item) {
+            $error = $item['entry'];
+            $code = isset($error['error_code']) && is_scalar($error['error_code']) ? (string) $error['error_code'] : '';
+            $color = $index % 2 === 0 ? '#555555' : '#333333';
+            $html .= '<tr style="background-color:' . $color . '"><td>' . ($index + 1) . '</td>';
+            foreach (['date', 'time', 'error_code', 'error_message'] as $key) {
+                $value = isset($error[$key]) && is_scalar($error[$key]) ? (string) $error[$key] : '';
+                if ($key === 'error_message' && (trim($value) === '' || ($code !== '' && preg_match('/^(?:Fehler|Error)\\s*' . preg_quote($code, '/') . '\\s*$/iu', trim($value))))) {
+                    $value = 'Keine nähere Beschreibung vom Gerät';
+                }
+                $html .= '<td>' . htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</td>';
+            }
+            $html .= '</tr>';
+        }
+        $this->writeMeasurement('mowerErrorList', $html . '</tbody></table>');
+    }
+
+    protected function refreshCachedErrorHistory()
+    {
+        // Older releases stored only the HTML, and normal updates do not query
+        // error history. Migrate that display locally without waking the mower.
+        $html = $this->readMeasurement('mowerErrorList', '');
+        if (!is_string($html) || $html === '') return;
+        preg_match_all('/<tr\\b[^>]*>(.*?)<\/tr>/is', $html, $rows);
+        $entries = [];
+        $hasIgnoredCode = false;
+        foreach ($rows[1] as $row) {
+            preg_match_all('/<td\\b[^>]*>(.*?)<\/td>/is', $row, $cells);
+            if ($cells[1] === []) continue; // Header row.
+            if (count($cells[1]) !== 5) return; // Leave unfamiliar HTML untouched.
+            $values = array_map(function ($cell) {
+                return html_entity_decode(strip_tags($cell), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            }, $cells[1]);
+            $entries[] = ['date' => $values[1], 'time' => $values[2], 'error_code' => $values[3], 'error_message' => $values[4]];
+            if (is_numeric($values[3]) && (float) $values[3] === 203.0) $hasIgnoredCode = true;
+        }
+        if ($hasIgnoredCode) $this->renderErrorHistory($entries);
     }
 
     protected function errorHistoryTimestamp(array $error)
@@ -910,9 +978,59 @@ class RobonectWifiModul extends IPSModule
                 $element['items'][1]['values'] = $rows;
                 if (version_compare(IPS_GetKernelVersion(), '6.0', '>=')) $element['items'][1]['loadValuesFromConfiguration'] = false;
             }
+            if (($element['name'] ?? '') === 'ModuleInformation') $element['items'][0]['caption'] = 'Teststand: ' . self::MODULE_BUILD;
         }
         unset($element);
         return json_encode($form);
+    }
+
+    public function SaveVariableSelection(string $selection)
+    {
+        $rows = json_decode($selection, true);
+        if (!is_array($rows) || $rows === []) throw new InvalidArgumentException('Keine gültige Variablenauswahl übergeben.');
+        $known = array_column($this->visibilityRows(), null, 'Ident');
+        $choices = $this->visibilityChoices();
+        foreach ($rows as $row) {
+            if (!is_array($row) || !isset($row['Ident'], $row['Visible']) || !is_string($row['Ident']) || !is_bool($row['Visible']) || !isset($known[$row['Ident']])) {
+                throw new InvalidArgumentException('Ungültige Variablenauswahl. Konfiguration bitte erneut öffnen.');
+            }
+            $choices[$row['Ident']] = $row['Visible'];
+        }
+        $saved = [];
+        foreach ($choices as $ident => $visible) $saved[] = ['Ident' => $ident, 'Visible' => $visible];
+        IPS_SetProperty($this->InstanceID, 'VariableVisibility', json_encode($saved));
+        IPS_ApplyChanges($this->InstanceID);
+        $this->UpdateFormField('VariableVisibility', 'values', json_encode($this->visibilityRows()));
+        return true;
+    }
+
+    protected function additionalValueDefinition(string $source)
+    {
+        $known = [
+            'HTTP status: status.distance' => ['Entfernung', 'Vom Mäher gemeldeter Entfernungswert in Metern.'],
+            'HTTP status: status.prevent' => ['Startverhinderung (Rohwert)', 'Statusfeld zur Startverhinderung; die genaue Codierung ist bisher nicht belegt.'],
+            'HTTP status: status.home' => ['Home-Status (Rohwert)', 'Zusätzliches Home-Statusfeld; die genaue Bedeutung und Codierung ist bisher nicht belegt.'],
+            'HTTP status: timer.next.date' => ['Nächster Timerstart: Datum', 'Datum des nächsten Timerstarts laut Robonect.'],
+            'HTTP status: timer.next.time' => ['Nächster Timerstart: Uhrzeit', 'Uhrzeit des nächsten Timerstarts laut Robonect.'],
+            'HTTP status: clock.date' => ['Gerätedatum', 'Aktuelles Datum der Robonect-Geräteuhr.'],
+            'HTTP status: clock.time' => ['Geräteuhrzeit', 'Aktuelle Uhrzeit der Robonect-Geräteuhr.'],
+        ];
+        $alarms = [
+            'voltage3v3intmin' => 'interne 3,3-V-Spannung zu niedrig',
+            'voltage3v3intmax' => 'interne 3,3-V-Spannung zu hoch',
+            'voltage3v3extmin' => 'externe 3,3-V-Spannung zu niedrig',
+            'voltage3v3extmax' => 'externe 3,3-V-Spannung zu hoch',
+            'voltagebattmin' => 'Akkuspannung zu niedrig',
+            'voltagebattmax' => 'Akkuspannung zu hoch',
+            'temperatureMin' => 'Temperatur zu niedrig',
+            'temperatureMax' => 'Temperatur zu hoch',
+            'humidityMax' => 'Luftfeuchtigkeit zu hoch',
+        ];
+        foreach ($alarms as $key => $label) {
+            $known['HTTP health: health.alarm.' . $key] = ['Alarm: ' . $label, 'Alarmfeld der Robonect-Zustandsüberwachung, unverändert als Text übernommen.'];
+        }
+        $metadata = $known[$source] ?? [$source, 'Bedeutung dieses zusätzlichen Feldes bisher nicht dokumentiert; unveränderter Rohwert.'];
+        return ['name' => $metadata[0], 'description' => $metadata[1] . ' Quelle: ' . $source, 'group' => 'Zusatzwerte', 'extra' => true, 'type' => 'string'];
     }
 
     protected function visibilityChoices()
@@ -949,7 +1067,7 @@ class RobonectWifiModul extends IPSModule
         $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
         $choices = $this->visibilityChoices();
         foreach ($discovered as $ident => $item) {
-            if (!isset($definitions[$ident])) $definitions[$ident] = ['name' => $item['name'], 'group' => 'Zusatzwerte', 'extra' => true, 'type' => 'string'];
+            if (!isset($definitions[$ident])) $definitions[$ident] = $this->additionalValueDefinition($item['name']);
         }
         $rows = [];
         // Preserve saved order: older Symcon List forms merge columns by row index.
@@ -961,8 +1079,10 @@ class RobonectWifiModul extends IPSModule
             $rows[] = [
                 'Ident' => $ident,
                 'Name' => $definition['name'],
+                'Description' => $definition['description'] ?? '',
                 'Group' => $definition['group'],
                 'Visible' => $this->selectedVisibility($ident, $choices),
+                'Variable' => $this->variableExists($ident) ? 'Angelegt' : 'Nicht angelegt',
                 'Data' => isset($available[$ident]) ? 'Daten empfangen' : ($this->variableExists($ident) ? 'Vorhanden' : 'Noch keine Daten')
             ];
         }
@@ -977,7 +1097,7 @@ class RobonectWifiModul extends IPSModule
         $position = 200;
         $available = json_decode($this->ReadAttributeString('AvailableValues'), true) ?: [];
         foreach ($discovered as $ident => $item) {
-            if (!isset($definitions[$ident])) $definitions[$ident] = ['name' => $item['name'], 'extra' => true, 'type' => 'string'];
+            if (!isset($definitions[$ident])) $definitions[$ident] = $this->additionalValueDefinition($item['name']);
         }
         foreach ($definitions as $ident => $definition) {
             if (empty($definition['extra'])) continue;

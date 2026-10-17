@@ -73,7 +73,7 @@ test('New data never overrides an older unchecked choice',function(){
 });
 test('Additional scalar HTTP fields use existing requests only',function(){
     $m=freshModule();$m->responses['status']=['successful'=>true,'status'=>['status'=>17,'distance'=>42],'future'=>['enabled'=>true]];$m->Update();eq($m->commands,['status']);$rows=selectionRows($m);
-    $names=array_column($rows,'Name');check(in_array('HTTP status: status.distance',$names,true));check(in_array('HTTP status: future.enabled',$names,true));eq(count($m->types),35);
+    $names=array_column($rows,'Name');check(in_array('Entfernung',$names,true));check(in_array('HTTP status: future.enabled',$names,true));eq(count($m->types),35);
 });
 test('Credential-like fields, arrays of history and command topics are not offered',function(){
     $m=freshModule();$m->responses['status']=['successful'=>true,'status'=>['status'=>17],'password'=>'do not store','config'=>['api_token'=>'do not store'],'records'=>[['value'=>1]]];$m->Update();$m->ReceiveData(mqttPublish('mower/control/mode','auto'));eq(count(selectionRows($m)),35);eq($m->attributes['DiscoveredValues'],'{}');
@@ -98,5 +98,50 @@ test('Configuration defaults do not highlight an unrequested mowing action',func
 });
 test('Repeated unknown telemetry does not rewrite a registered variable',function(){
     $m=freshModule();$m->ReceiveData(mqttPublish('mower/custom/first','a'));$m->properties['VariableVisibility']=json_encode(selectionRows($m));$m->ApplyChanges();$calls=$m->setValueCalls;$m->ReceiveData(mqttPublish('mower/custom/first','a'));eq($m->setValueCalls,$calls);
+});
+test('The form button saves all displayed default checkboxes and creates named extra variables', function () {
+    $m=freshModule();
+    $m->responses['status']=['successful'=>true,'status'=>['status'=>17,'distance'=>42]];
+    $m->Update();
+    $ident='extra_'.substr(sha1('HTTP status: status.distance'),0,20);
+    $form=json_decode($m->GetConfigurationForm(),true);
+    $row=rowByIdent(selectionRows($m),$ident);
+    eq($row['Visible'],true);eq($row['Variable'],'Nicht angelegt');
+    check(strpos($row['Description'],'Metern')!==false);
+    check(strpos($row['Description'],'HTTP status: status.distance')!==false);
+    $m->ApplyChanges();check(!isset($m->types[$ident]));
+    $id=$m->InstanceID;
+    $VariableVisibility=new ArrayIterator(selectionRows($m));
+    eval(implode("\n",$form['elements'][2]['items'][2]['onClick']));
+    eq($m->values[$ident],'42');eq($m->variableNames[$ident],'Entfernung');
+    eq(rowByIdent(selectionRows($m),$ident)['Variable'],'Angelegt');
+    $last=end($m->formUpdates);eq($last[0],'VariableVisibility');eq($last[1],'values');
+    eq(rowByIdent(json_decode($last[2],true),$ident)['Variable'],'Angelegt');
+    choose($m,$ident,false);$m->SaveVariableSelection($m->properties['VariableVisibility']);
+    check(!isset($m->types[$ident]));
+});
+test('Malformed explicit variable selections cannot change properties or create objects', function () {
+    $m=freshModule();$before=$m->properties;$calls=$GLOBALS['maintainCalls'];
+    foreach(['null','{}','[]','broken','[{"Ident":"invented","Visible":true}]','[{"Ident":"mowerHours","Visible":"false"}]'] as $selection) {
+        try{$m->SaveVariableSelection($selection);throw new LogicException('Invalid selection accepted');}catch(InvalidArgumentException $e){}
+        eq($m->properties,$before);eq($GLOBALS['maintainCalls'],$calls);
+    }
+});
+test('Known alarms get descriptions and unknown extras explicitly retain their raw source', function () {
+    $m=freshModule();
+    $m->responses=['status'=>['successful'=>true,'status'=>['status'=>2,'home'=>0,'prevent'=>0],'clock'=>['date'=>'2026-10-17','time'=>'12:34:56']],'health'=>['successful'=>true,'health'=>['alarm'=>['voltage3v3intmin'=>false]]]];
+    $m->Update();$rows=selectionRows($m);
+    foreach(['HTTP health: health.alarm.voltage3v3intmin'=>'Alarm: interne 3,3-V-Spannung zu niedrig','HTTP status: clock.date'=>'Gerätedatum','HTTP status: clock.time'=>'Geräteuhrzeit'] as $source=>$name) {
+        $row=rowByIdent($rows,'extra_'.substr(sha1($source),0,20));eq($row['Name'],$name);check(strpos($row['Description'],$source)!==false);
+    }
+    $m->ReceiveData(mqttPublish('mower/custom/unknown','text'));
+    $rows=selectionRows($m);$row=end($rows);check(strpos($row['Description'],'nicht dokumentiert')!==false);
+    $ident='extra_'.substr(sha1('HTTP status: status.home'),0,20);
+    check(strpos(rowByIdent($rows,$ident)['Description'],'nicht belegt')!==false);
+});
+test('Form reports installed build and all manual requests have a visible response', function () {
+    $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
+    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.2')!==false);
+    foreach($form['actions'] as $button)check(strpos($button['onClick'],'echo ')===0);
 });
 finishTests();

@@ -136,4 +136,28 @@ test('Legacy named error objects use the same code 203 filter', function () {
     check(strpos($m->values['mowerErrorList'], '<td>203</td>') === false);
     check(strpos($m->values['mowerErrorList'], 'Schneidsystem unregelmäßig') !== false);
 });
+test('Apply migrates cached legacy HTML and count without querying or clearing the mower', function () {
+    $m=freshModule();
+    $m->values['mowerErrorCount']=2;
+    $m->values['mowerErrorList']='<table><thead><tr><th>Code</th></tr></thead><tbody>'
+        .'<tr style="background-color:"#555555><td>1</td><td>2026-10-17</td><td>11:14:48</td><td>203</td><td>Fehler 203</td></tr>'
+        .'<tr><td>2</td><td>2026-10-16</td><td>13:27:34</td><td>80</td><td>Schneidsystem &lt;unregelmäßig&gt;</td></tr></tbody></table>';
+    $m->ApplyChanges();
+    eq($m->commands,[]);eq($m->values['mowerErrorCount'],1);
+    check(strpos($m->values['mowerErrorList'],'<td>203</td>')===false);
+    check(strpos($m->values['mowerErrorList'],'Schneidsystem &lt;unregelmäßig&gt;')!==false);
+    check(strpos($m->values['mowerErrorList'],'<td>1</td>')!==false);
+    $calls=$m->setValueCalls;$m->ApplyChanges();eq($m->setValueCalls,$calls);
+});
+test('Apply clears a cached history consisting only of code 203', function () {
+    $m=freshModule();$m->values['mowerErrorCount']=1;
+    $m->values['mowerErrorList']='<table><tr><td>1</td><td>17.10.2026</td><td>11:14:48</td><td>203</td><td>Fehler 203</td></tr></table>';
+    $m->ApplyChanges();eq($m->values['mowerErrorCount'],0);eq($m->values['mowerErrorList'],'');eq($m->commands,[]);
+});
+test('Numeric formatting of 203 cannot bypass the history filter', function () {
+    $m=freshModule();$errors=[];
+    foreach([203.0,' 203 ','00203','203.0',2030] as $code)$errors[]=['error_code'=>$code];
+    $m->responses['error']=['successful'=>true,'errors'=>$errors];$m->UpdateErrorList();
+    eq($m->values['mowerErrorCount'],1);check(strpos($m->values['mowerErrorList'],'<td>2030</td>')!==false);
+});
 finishTests();
