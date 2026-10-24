@@ -58,7 +58,7 @@ echo ROBONECT_RefreshAllValues($InstanzID, '');
 
 Der zweite Parameter bleibt aus Kompatibilitätsgründen erhalten und verändert kein Formular. Der Testdouble bildet nun die beiden Pflichtparameter nach; der zuvor fehlerhafte Formularaufruf mit nur einem Argument würde im Test scheitern. Die Rückmeldung zeigt die Ergebnisse aller vier Abrufe. Eine während des Abrufs abgelöste Instanz wird durch den Schutz aus Build 11 abgefangen.
 
-Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-17.12**; Bibliotheks-Build 12 kennzeichnet die Änderung. Nach dem Modulupdate die Konfiguration schließen und neu öffnen, damit das neue Formular und der korrigierte Knopf geladen werden. Die tatsächliche Darstellung und Übernahme sind noch in Symcon zu bestätigen.
+Unter „Informationen und Unterstützung“ steht **Teststand 2026-10-24.13**; Bibliotheks-Build 13 ergänzt „Ohne“ als Ersatztext für einen leeren oder noch nicht empfangenen Substatus-Klartext. Beim Übernehmen werden bereits leere Variablen entsprechend gesetzt; vorhandener Klartext bleibt erhalten. Leere MQTT-Textmeldungen setzen ebenfalls „Ohne“, ausschließlich bei Wertänderung und ohne zusätzliche Geräteabfragen. Nach dem Modulupdate die Konfiguration schließen und neu öffnen, damit das neue Formular und der korrigierte Knopf geladen werden. Die tatsächliche Darstellung und Übernahme sind noch in Symcon zu bestätigen.
 
 ## Zusammengefasste Gerätealarme
 

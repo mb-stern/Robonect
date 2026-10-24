@@ -213,6 +213,25 @@ test('Connection test only reads status and returns success or failure text',fun
     $m=freshModule();$m->responses['status']=awake();check(strpos($m->TestConnection(),'erfolgreich')!==false);eq($m->commands,['status']);
     $m->responses['status']=false;check(strpos($m->TestConnection(),'fehlgeschlagen')!==false);eq($m->commands,['status','status']);
 });
+test('Substatus text defaults to Ohne and applying changes preserves received text',function(){
+    $m=freshModule();eq($m->values['mowerSubstatusPlain'],'Ohne');
+    $m->values['mowerSubstatusPlain']='';$m->ApplyChanges();eq($m->values['mowerSubstatusPlain'],'Ohne');
+    $calls=$m->setValueCalls;$m->ApplyChanges();eq($m->setValueCalls,$calls);eq($m->commands,[]);
+    receive($m,publish('mower/mower/substatus/plain','Lädt'));$m->ApplyChanges();eq($m->values['mowerSubstatusPlain'],'Lädt');
+});
+test('Empty retained and live substatus text resets to Ohne only on value changes',function(){
+    $m=freshModule();receive($m,publish('mower/mower/substatus/plain','Lädt'));
+    receive($m,publish('mower/mower/substatus/plain','',0,true));eq($m->values['mowerSubstatusPlain'],'Ohne');
+    $calls=$m->setValueCalls;receive($m,publish('mower/mower/substatus/plain'," \t\r\n",0,true));eq($m->setValueCalls,$calls);
+    receive($m,publish('mower/mower/substatus/plain','Fährt zur Ladestation'));
+    receive($m,publish('mower/mower/substatus/plain',''));eq($m->values['mowerSubstatusPlain'],'Ohne');
+    $calls=$m->setValueCalls;receive($m,publish('mower/mower/substatus/plain',''));eq($m->setValueCalls,$calls);eq($m->commands,[]);
+});
+test('Substatus fallback respects disabled variables and restores on native apply',function(){
+    $m=freshModule();$m->properties['VariableVisibility']='[{"Ident":"mowerSubstatusPlain","Visible":false}]';$m->ApplyChanges();
+    receive($m,publish('mower/mower/substatus/plain',''));check(!isset($m->types['mowerSubstatusPlain']));
+    $m->properties['VariableVisibility']='[{"Ident":"mowerSubstatusPlain","Visible":true}]';$m->ApplyChanges();eq($m->values['mowerSubstatusPlain'],'Ohne');
+});
 test('Substatus numeric and plain MQTT reception works with retained and fragmented live packets',function(){
     $m=freshModule();receive($m,publish('mower/mower/substatus','3',0,true).publish('mower/mower/substatus/plain','Lädt',0,true));
     eq($m->values['mowerSubstatus'],3);eq($m->values['mowerSubstatusPlain'],'Lädt');

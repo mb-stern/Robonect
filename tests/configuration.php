@@ -188,7 +188,7 @@ test('Known alarms get descriptions and unknown extras explicitly retain their r
 });
 test('Form reports installed build and all manual requests have a visible response', function () {
     $m=freshModule();$form=json_decode($m->GetConfigurationForm(),true);
-    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-17.12')!==false);
+    check(strpos($form['elements'][4]['items'][0]['caption'],'2026-10-24.13')!==false);
     foreach(formButtons($form['elements']) as $button){$script=is_array($button['onClick'])?implode("\n",$button['onClick']):$button['onClick'];check(strpos($script,'echo ')!==false);}
 });
 test('Full refresh leaves open editable forms and pending selections untouched',function(){

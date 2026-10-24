@@ -3,7 +3,7 @@
 // Klassendefinition
 class RobonectWifiModul extends IPSModule
 {
-    private const MODULE_BUILD = '2026-10-17.12';
+    private const MODULE_BUILD = '2026-10-24.13';
     private $updateReport = [];
     private $lastHTTPFailure = '';
     private $instanceGuardActive = false;
@@ -1003,7 +1003,9 @@ class RobonectWifiModul extends IPSModule
                 if ($ident === 'mowerMode') $this->writeMeasurement('mowerModeInteractive', $value === 0 ? 1 : 0);
             } elseif (in_array($ident, ['mowerName', 'mowerSerial', 'mowerStatusPlain', 'mowerSubstatusPlain', 'mowerErrorMessage'], true)) {
                 if (!is_scalar($payload)) return false;
-                $this->writeMeasurement($ident, (string) $payload);
+                $value = (string) $payload;
+                if ($ident === 'mowerSubstatusPlain' && trim($value) === '') $value = 'Ohne';
+                $this->writeMeasurement($ident, $value);
             } elseif ($ident === 'mowerStopped') {
                 if (!is_scalar($payload) || $payload === '') return false;
                 $stopped = filter_var($payload, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
@@ -1090,7 +1092,7 @@ class RobonectWifiModul extends IPSModule
             'mowerStatus' => ['name' => 'Status', 'group' => 'Status', 'type' => 1, 'profile' => 'ROBONECT_Status', 'position' => 31],
             'mowerStatusPlain' => ['name' => 'Status (Klartext)', 'group' => 'Status', 'type' => 3, 'profile' => '', 'position' => 32],
             'mowerSubstatus' => ['name' => 'Substatus', 'description' => 'Nur über MQTT: <MQTT-Topic>/mower/substatus. Eine HTTP-Gesamtaktualisierung liefert diesen Wert nicht.', 'group' => 'Status', 'type' => 1, 'profile' => '', 'position' => 33],
-            'mowerSubstatusPlain' => ['name' => 'Substatus (Klartext)', 'description' => 'Nur über MQTT: <MQTT-Topic>/mower/substatus/plain. Eine HTTP-Gesamtaktualisierung liefert diesen Wert nicht.', 'group' => 'Status', 'type' => 3, 'profile' => '', 'position' => 34],
+            'mowerSubstatusPlain' => ['name' => 'Substatus (Klartext)', 'description' => 'Nur über MQTT: <MQTT-Topic>/mower/substatus/plain. Ohne empfangenen Text steht hier „Ohne“. Eine HTTP-Gesamtaktualisierung liefert diesen Wert nicht.', 'group' => 'Status', 'type' => 3, 'profile' => '', 'position' => 34],
             'mowerStopped' => ['name' => 'man. angehalten', 'group' => 'Status', 'type' => 0, 'profile' => 'ROBONECT_JaNein', 'position' => 35],
             'mowerStatusSince' => ['name' => 'Status seit', 'group' => 'Status', 'type' => 1, 'profile' => '~UnixTimestamp', 'position' => 36],
             'statusSinceDescriptive' => ['name' => 'Status seit', 'group' => 'Status', 'type' => 3, 'profile' => '', 'position' => 37],
@@ -1742,6 +1744,9 @@ class RobonectWifiModul extends IPSModule
             } elseif ($ident === 'manualAction') {
                 $this->setValueIfChanged($ident, -1);
             }
+        }
+        if ($keep && $ident === 'mowerSubstatusPlain' && trim($this->GetValue($ident)) === '') {
+            $this->setValueIfChanged($ident, 'Ohne');
         }
     }
 
